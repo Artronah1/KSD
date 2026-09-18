@@ -20,3 +20,6 @@ Thumbs.db
 абоут.txt
 photo_*.jpg
 *.log
+
+# Whitelist: конфигуратор должен быть в git
+!scripts/ksd-configurator

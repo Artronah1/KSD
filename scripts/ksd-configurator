@@ -1,0 +1,579 @@
+#!/bin/sh
+# Интерактивный конфигуратор для ksd (Go-версия killswitch)
+# Управляет /etc/config/killswitch через UCI.
+# Все операции — через /usr/sbin/ksd <cmd> -config /etc/config/killswitch
+#
+# Что убрано из shell-версии (в ksd этого нет):
+#   semantic_verify_enabled, cache_file, cache_ttl_hours, cache_hard_ttl_hours,
+#   empty_source_threshold, monitoring_enabled, monitoring_interval_minutes,
+#   monitor_after_stop, reset_checksum_on_change
+# Что добавлено (есть в ksd):
+#   poll_interval_sec, verify_interval_sec, empty_source_grace_sec,
+#   full_fail_max, max_vps_elements, flush_on_narrow_only, merge_static_vps,
+#   log_max_kb, force_stop, arp_protection (плоские опции)
+
+KSD="/usr/sbin/ksd"
+CONFIG="/etc/config/killswitch"
+INIT="/etc/init.d/ksd"
+
+if [ -t 1 ]; then
+    RED=$(printf '\033[31m');   GREEN=$(printf '\033[32m')
+    YELLOW=$(printf '\033[33m'); BLUE=$(printf '\033[34m')
+    MAGENTA=$(printf '\033[35m'); CYAN=$(printf '\033[36m')
+    BOLD=$(printf '\033[1m');    DIM=$(printf '\033[2m')
+    RESET=$(printf '\033[0m')
+else
+    RED=""; GREEN=""; YELLOW=""; BLUE=""; MAGENTA=""; CYAN=""
+    BOLD=""; DIM=""; RESET=""
+fi
+
+# ─── Валидаторы ─────────────────────────────────────────
+
+validate_ip_plain() {
+    echo "$1" | grep -qE '^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$'
+}
+validate_ip_cidr() {
+    echo "$1" | grep -qE '^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)(/(3[0-2]|[12]?[0-9]))?$'
+}
+validate_mac() {
+    echo "$1" | grep -qiE '^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$'
+}
+validate_priority() {
+    echo "$1" | grep -qE '^-?[0-9]+$'
+}
+validate_positive_int() {
+    echo "$1" | grep -qE '^[1-9][0-9]*$'
+}
+validate_source_set() {
+    echo "$1" | grep -qE '^inet [a-zA-Z_][a-zA-Z0-9_]* [a-zA-Z_][a-zA-Z0-9_]*$'
+}
+
+# ─── Артефакт ───────────────────────────────────────────
+
+get_artifact_hash() {
+    if [ -f "$KSD" ]; then
+        sha256sum "$KSD" 2>/dev/null | awk '{print $1}'
+    else
+        echo "<ksd not found>"
+    fi
+}
+
+show_artifact_info() {
+    clear
+    echo "${BOLD}=== Идентификация артефакта ===${RESET}"
+    echo ""
+    if [ ! -f "$KSD" ]; then
+        echo "${RED}✗ $KSD не найден${RESET}"
+        read -r -p "Enter..." dummy; return
+    fi
+    echo "${CYAN}SHA-256 ($KSD):${RESET}"
+    echo "  $(get_artifact_hash)"
+    echo ""
+    echo "${DIM}Размер: $(wc -c < "$KSD" | tr -d ' ') байт${RESET}"
+    echo "${DIM}Изменён: $(ls -l "$KSD" | awk '{print $6, $7, $8}')${RESET}"
+    echo ""
+    echo "${CYAN}Версия ksd:${RESET}"
+    $KSD version 2>/dev/null | sed 's/^/  /'
+    echo ""
+    read -r -p "Enter..." dummy
+}
+
+# ─── Загрузка конфига ───────────────────────────────────
+
+load_config() {
+    # Основное
+    TABLE_NAME=$(uci -q get killswitch.main.table_name 2>/dev/null || echo "killswitch_table")
+    SET_NAME=$(uci -q get killswitch.main.set_name 2>/dev/null || echo "vps_ipv4")
+    SOURCE_SET=$(uci -q get killswitch.main.source_set 2>/dev/null || echo "inet passwall2 psw2_vps")
+    WAN_IF=$(uci -q get killswitch.main.wan_interface 2>/dev/null || echo "wan")
+    WAN_DEV=$(uci -q get killswitch.main.wan_device 2>/dev/null || echo "")
+
+    STRICT_MODE=$(uci -q get killswitch.main.strict_mode 2>/dev/null || echo "1")
+    DNS_BLOCK=$(uci -q get killswitch.main.dns_block_enabled 2>/dev/null || echo "1")
+    DOH_BLOCK=$(uci -q get killswitch.main.doh_block_enabled 2>/dev/null || echo "1")
+    DOQ_BLOCK=$(uci -q get killswitch.main.doq_block_enabled 2>/dev/null || echo "1")
+    QUIC_BLOCK=$(uci -q get killswitch.main.quic_block_enabled 2>/dev/null || echo "0")
+    IPV6_BLOCK=$(uci -q get killswitch.main.ipv6_block_enabled 2>/dev/null || echo "1")
+    FORWARD_PROTECT=$(uci -q get killswitch.main.forward_protect 2>/dev/null || echo "1")
+    MSS_CLAMP=$(uci -q get killswitch.main.mss_clamp_enabled 2>/dev/null || echo "1")
+    TTL_SET=$(uci -q get killswitch.main.ttl_set_enabled 2>/dev/null || echo "0")
+    FORCE_STOP=$(uci -q get killswitch.main.force_stop 2>/dev/null || echo "0")
+
+    FILTER_PRIO=$(uci -q get killswitch.main.filter_priority 2>/dev/null || echo "-10")
+    FORWARD_FILTER_PRIO=$(uci -q get killswitch.main.forward_filter_priority 2>/dev/null || echo "-15")
+    MANGLE_PRIO=$(uci -q get killswitch.main.mangle_priority 2>/dev/null || echo "-150")
+
+    POLL_INTERVAL=$(uci -q get killswitch.main.poll_interval_sec 2>/dev/null || echo "5")
+    VERIFY_INTERVAL=$(uci -q get killswitch.main.verify_interval_sec 2>/dev/null || echo "60")
+    EMPTY_GRACE=$(uci -q get killswitch.main.empty_source_grace_sec 2>/dev/null || echo "15")
+    FULL_FAIL_MAX=$(uci -q get killswitch.main.full_fail_max 2>/dev/null || echo "3")
+    MAX_VPS=$(uci -q get killswitch.main.max_vps_elements 2>/dev/null || echo "5000")
+    FLUSH_NARROW=$(uci -q get killswitch.main.flush_on_narrow_only 2>/dev/null || echo "1")
+    MERGE_STATIC=$(uci -q get killswitch.main.merge_static_vps 2>/dev/null || echo "0")
+
+    LOG_SUSP=$(uci -q get killswitch.main.log_suspicious 2>/dev/null || echo "1")
+    LOG_DROPS=$(uci -q get killswitch.main.log_drops 2>/dev/null || echo "0")
+    LOG_FILE=$(uci -q get killswitch.main.log_file 2>/dev/null || echo "")
+    LOG_MAX_KB=$(uci -q get killswitch.main.log_max_kb 2>/dev/null || echo "512")
+
+    ARP_PROT=$(uci -q get killswitch.main.arp_protection 2>/dev/null || echo "0")
+    ARP_IFACE=$(uci -q get killswitch.main.arp_interface 2>/dev/null || echo "")
+
+    # Списки
+    ALLOWED_MARKS=$(uci -q show killswitch.main.allowed_mark 2>/dev/null | cut -d= -f2 | tr -d "'" | tr '\n' ' ')
+    [ -z "$ALLOWED_MARKS" ] && ALLOWED_MARKS="0x50535732 0x000000ff"
+
+    ALLOWED_IFACES=$(uci -q show killswitch.main.allowed_iface 2>/dev/null | cut -d= -f2 | tr -d "'" | tr '\n' ' ')
+    [ -z "$ALLOWED_IFACES" ] && ALLOWED_IFACES="lo br-lan"
+
+    STATIC_VPS=$(uci -q show killswitch.main.static_vps 2>/dev/null | cut -d= -f2 | tr -d "'" | tr '\n' ' ')
+
+    DOH_SERVERS=$(uci -q show killswitch.doh.server 2>/dev/null | cut -d= -f2 | tr -d "'" | tr '\n' ' ')
+
+    NTP_SERVERS=$(uci -q show killswitch.main.ntp_servers 2>/dev/null | cut -d= -f2 | tr -d "'" | tr '\n' ' ')
+
+    ARP_GATEWAYS=$(uci -q show killswitch.main.arp_gateway 2>/dev/null | cut -d= -f2 | tr -d "'" | tr '\n' ' ')
+    ARP_GATEWAY_MACS=$(uci -q show killswitch.main.arp_gateway_mac 2>/dev/null | cut -d= -f2 | tr -d "'" | tr '\n' ' ')
+}
+
+# ─── Показ конфига ──────────────────────────────────────
+
+show_config() {
+    load_config
+    clear
+    echo "${BOLD}=== Конфигурация ksd ===${RESET}"
+    echo ""
+    echo "${GREEN}Основные:${RESET}"
+    echo "  strict_mode              : ${STRICT_MODE}"
+    echo "  dns_block_enabled        : ${DNS_BLOCK}"
+    echo "  doh_block_enabled        : ${DOH_BLOCK}"
+    echo "  doq_block_enabled        : ${DOQ_BLOCK}"
+    echo "  quic_block_enabled       : ${QUIC_BLOCK}"
+    echo "  ipv6_block_enabled       : ${IPV6_BLOCK}"
+    echo "  forward_protect          : ${FORWARD_PROTECT}"
+    echo "  mss_clamp_enabled        : ${MSS_CLAMP}"
+    echo "  ttl_set_enabled          : ${TTL_SET}"
+    echo "  force_stop               : ${FORCE_STOP}"
+    echo ""
+    echo "${YELLOW}Сеть:${RESET}"
+    echo "  wan_interface            : ${WAN_IF}"
+    echo "  wan_device               : ${WAN_DEV:-<авто>}"
+    echo "  table_name               : ${TABLE_NAME}"
+    echo "  set_name                 : ${SET_NAME}"
+    echo "  source_set               : ${SOURCE_SET}"
+    echo "  filter_priority          : ${FILTER_PRIO}"
+    echo "  forward_filter_prio      : ${FORWARD_FILTER_PRIO}"
+    echo "  mangle_priority          : ${MANGLE_PRIO}"
+    echo "  ntp_servers              : ${NTP_SERVERS:-<не задано>}"
+    echo ""
+    echo "${BLUE}Тайминги / предохранитель:${RESET}"
+    echo "  poll_interval_sec        : ${POLL_INTERVAL}"
+    echo "  verify_interval_sec      : ${VERIFY_INTERVAL}"
+    echo "  empty_source_grace_sec   : ${EMPTY_GRACE}"
+    echo "  full_fail_max            : ${FULL_FAIL_MAX}"
+    echo "  max_vps_elements         : ${MAX_VPS}"
+    echo "  flush_on_narrow_only     : ${FLUSH_NARROW}"
+    echo "  merge_static_vps         : ${MERGE_STATIC}"
+    echo ""
+    echo "${MAGENTA}DNS / DoH:${RESET}"
+    echo "  DoH servers              : ${DOH_SERVERS:-<пусто>}"
+    echo ""
+    echo "${RED}ARP защита:${RESET}"
+    echo "  arp_protection           : ${ARP_PROT}"
+    echo "  arp_interface            : ${ARP_IFACE:-<авто>}"
+    echo "  arp_gateways             : ${ARP_GATEWAYS:-<не задано>}"
+    echo "  arp_gateway_mac          : ${ARP_GATEWAY_MACS:-<не задано>}"
+    echo ""
+    echo "${YELLOW}Логи:${RESET}"
+    echo "  log_suspicious           : ${LOG_SUSP}"
+    echo "  log_drops                : ${LOG_DROPS}"
+    echo "  log_file                 : ${LOG_FILE:-<не задан>}"
+    echo "  log_max_kb               : ${LOG_MAX_KB}"
+    echo ""
+    echo "${BLUE}Списки:${RESET}"
+    echo "  allowed_marks            : ${ALLOWED_MARKS}"
+    echo "  allowed_interfaces       : ${ALLOWED_IFACES}"
+    echo "  static_vps               : ${STATIC_VPS:-<пусто>}"
+    echo ""
+    echo "${BOLD}Артефакт:${RESET} $(get_artifact_hash | cut -c1-32)..."
+    echo "${DIM}Всего опций в UCI: $(uci -q show killswitch | wc -l)${RESET}"
+}
+
+# ─── Изменение параметров ───────────────────────────────
+
+set_boolean() {
+    local var_name="$1" current="$2" prompt="$3" new_val
+    echo "${prompt} (сейчас: ${current})"
+    echo "  1) Вкл (1)"
+    echo "  2) Выкл (0)"
+    read -r -p "Выбор [1/2]: " choice
+    case "$choice" in
+        1) new_val="1" ;;
+        2) new_val="0" ;;
+        *) echo "Оставляем ${current}"; return ;;
+    esac
+    if [ "$new_val" != "$current" ]; then
+        uci set killswitch.main.${var_name}="$new_val"
+        echo "${GREEN}✓ ${var_name} = ${new_val}${RESET}"
+    else
+        echo "Без изменений"
+    fi
+}
+
+set_string() {
+    local var_name="$1" current="$2" prompt="$3" validator="$4" new_val
+    echo "${prompt} (сейчас: ${current:-<пусто>})"
+    while true; do
+        read -r -p "Новое значение (Enter — оставить): " new_val
+        [ -z "$new_val" ] && return
+        if [ -n "$validator" ]; then
+            if $validator "$new_val"; then break
+            else echo "${RED}Неверный формат${RESET}"; fi
+        else
+            break
+        fi
+    done
+    if [ "$new_val" != "$current" ]; then
+        uci set killswitch.main.${var_name}="$new_val"
+        echo "${GREEN}✓ ${var_name} = '${new_val}'${RESET}"
+    fi
+}
+
+# ─── Управление списками ────────────────────────────────
+
+manage_list() {
+    local section="$1" option="$2" type_desc="$3" validator="$4"
+    local current_list
+
+    if [ "$section" = "main" ]; then
+        current_list=$(uci -q show killswitch.main.${option} | cut -d= -f2 | tr -d "'")
+    elif [ "$section" = "doh" ]; then
+        current_list=$(uci -q show killswitch.doh.${option} | cut -d= -f2 | tr -d "'")
+    fi
+
+    echo "${BOLD}Текущий список ${type_desc}:${RESET}"
+    if [ -n "$current_list" ]; then
+        echo "$current_list" | while read -r item; do echo "  - $item"; done
+    else
+        echo "  <пусто>"
+    fi
+    echo ""
+    echo "  1) Добавить"
+    echo "  2) Удалить по номеру"
+    echo "  3) Очистить"
+    echo "  0) Назад"
+    read -r -p "Действие: " action
+
+    case "$action" in
+        1)
+            read -r -p "Значение: " new_item
+            [ -z "$new_item" ] && return
+            if [ -n "$validator" ] && ! $validator "$new_item"; then
+                echo "${RED}Неверный формат${RESET}"; return
+            fi
+            uci add_list killswitch.${section}.${option}="$new_item"
+            echo "${GREEN}✓ Добавлено: ${new_item}${RESET}"
+            ;;
+        2)
+            [ -z "$current_list" ] && { echo "Список пуст"; return; }
+            i=1
+            echo "$current_list" | while read -r item; do
+                echo "  ${i}) ${item}"; i=$((i+1))
+            done
+            read -r -p "Номер: " idx
+            case "$idx" in ''|*[!0-9]*) echo "Неверный номер"; return ;; esac
+            local total=$(echo "$current_list" | grep -c .)
+            [ "$idx" -lt 1 ] || [ "$idx" -gt "$total" ] && { echo "Допустимо 1-${total}"; return; }
+            local item=$(echo "$current_list" | sed -n "${idx}p")
+            uci del_list killswitch.${section}.${option}="$item"
+            echo "${GREEN}✓ Удалён #${idx}: ${item}${RESET}"
+            ;;
+        3)
+            uci -q delete killswitch.${section}.${option}
+            echo "${GREEN}✓ Список очищен${RESET}"
+            ;;
+        0) return ;;
+    esac
+}
+
+# ─── Подменю ────────────────────────────────────────────
+
+menu_basic() {
+    while true; do
+        load_config
+        clear
+        echo "${BOLD}=== Основные параметры ===${RESET}"
+        echo "  1) strict_mode          : ${STRICT_MODE}"
+        echo "  2) dns_block_enabled    : ${DNS_BLOCK}"
+        echo "  3) doh_block_enabled    : ${DOH_BLOCK}"
+        echo "  4) doq_block_enabled    : ${DOQ_BLOCK}"
+        echo "  5) quic_block_enabled   : ${QUIC_BLOCK}"
+        echo "  6) ipv6_block_enabled   : ${IPV6_BLOCK}"
+        echo "  7) forward_protect      : ${FORWARD_PROTECT}"
+        echo "  8) mss_clamp_enabled    : ${MSS_CLAMP}"
+        echo "  9) ttl_set_enabled      : ${TTL_SET}"
+        echo " 10) force_stop           : ${FORCE_STOP}"
+        echo "  0) Назад"
+        read -r -p "Выбор [0-10]: " opt
+        case "$opt" in
+            1) set_boolean strict_mode "$STRICT_MODE" "strict_mode?" ;;
+            2) set_boolean dns_block_enabled "$DNS_BLOCK" "DNS блокировка?" ;;
+            3) set_boolean doh_block_enabled "$DOH_BLOCK" "DoH блокировка?" ;;
+            4) set_boolean doq_block_enabled "$DOQ_BLOCK" "DoQ блокировка?" ;;
+            5) set_boolean quic_block_enabled "$QUIC_BLOCK" "QUIC (UDP/443) блокировка?" ;;
+            6) set_boolean ipv6_block_enabled "$IPV6_BLOCK" "IPv6 блокировка?" ;;
+            7) set_boolean forward_protect "$FORWARD_PROTECT" "forward_protect?" ;;
+            8) set_boolean mss_clamp_enabled "$MSS_CLAMP" "MSS clamp?" ;;
+            9) set_boolean ttl_set_enabled "$TTL_SET" "TTL set (для обхода TTL-based детекта провайдера)?" ;;
+            10) set_boolean force_stop "$FORCE_STOP" "force_stop (при stop удалять nft-объекты)?" ;;
+            0) break ;;
+        esac
+        uci commit killswitch
+    done
+}
+
+menu_network() {
+    while true; do
+        load_config
+        clear
+        echo "${BOLD}=== Сетевые настройки ===${RESET}"
+        echo "  1) wan_interface       : ${WAN_IF}"
+        echo "  2) wan_device          : ${WAN_DEV:-<авто>}"
+        echo "  3) table_name          : ${TABLE_NAME}"
+        echo "  4) set_name            : ${SET_NAME}"
+        echo "  5) source_set          : ${SOURCE_SET}"
+        echo "  6) filter_priority     : ${FILTER_PRIO}"
+        echo "  7) forward_filter_prio : ${FORWARD_FILTER_PRIO}"
+        echo "  8) mangle_priority     : ${MANGLE_PRIO}"
+        echo "  9) ntp_servers         : ${NTP_SERVERS:-<не задано>}"
+        echo "  0) Назад"
+        read -r -p "Выбор [0-9]: " opt
+        case "$opt" in
+            1) set_string wan_interface "$WAN_IF" "WAN интерфейс" ;;
+            2) set_string wan_device "$WAN_DEV" "WAN устройство (пусто = авто)" ;;
+            3) set_string table_name "$TABLE_NAME" "Имя таблицы nftables" ;;
+            4) set_string set_name "$SET_NAME" "Имя set VPS" ;;
+            5) set_string source_set "$SOURCE_SET" "Источник VPS ('inet TABLE SET')" validate_source_set ;;
+            6) set_string filter_priority "$FILTER_PRIO" "Приоритет output" validate_priority ;;
+            7) set_string forward_filter_priority "$FORWARD_FILTER_PRIO" "Приоритет forward" validate_priority ;;
+            8) set_string mangle_priority "$MANGLE_PRIO" "Приоритет mangle" validate_priority ;;
+            9) set_string ntp_servers "$NTP_SERVERS" "NTP серверы (IP через пробел)" ;;
+            0) break ;;
+        esac
+        uci commit killswitch
+    done
+}
+
+menu_timing() {
+    while true; do
+        load_config
+        clear
+        echo "${BOLD}=== Тайминги и предохранитель ===${RESET}"
+        echo "  1) poll_interval_sec      : ${POLL_INTERVAL}"
+        echo "  2) verify_interval_sec    : ${VERIFY_INTERVAL}"
+        echo "  3) empty_source_grace_sec : ${EMPTY_GRACE}"
+        echo "  4) full_fail_max          : ${FULL_FAIL_MAX}"
+        echo "  5) max_vps_elements       : ${MAX_VPS}"
+        echo "  6) flush_on_narrow_only   : ${FLUSH_NARROW}"
+        echo "  7) merge_static_vps       : ${MERGE_STATIC}"
+        echo "  0) Назад"
+        read -r -p "Выбор [0-7]: " opt
+        case "$opt" in
+            1) set_string poll_interval_sec "$POLL_INTERVAL" "Poll интервал (сек)" validate_positive_int ;;
+            2) set_string verify_interval_sec "$VERIFY_INTERVAL" "Verify интервал (сек)" validate_positive_int ;;
+            3) set_string empty_source_grace_sec "$EMPTY_GRACE" "Debounce пустого источника (сек)" validate_positive_int ;;
+            4) set_string full_fail_max "$FULL_FAIL_MAX" "Максимум подряд full-fail" validate_positive_int ;;
+            5) set_string max_vps_elements "$MAX_VPS" "Максимум элементов VPS" validate_positive_int ;;
+            6) set_boolean flush_on_narrow_only "$FLUSH_NARROW" "Чистить conntrack только при сужении set?" ;;
+            7) set_boolean merge_static_vps "$MERGE_STATIC" "Добавлять static_vps в общий set?" ;;
+            0) break ;;
+        esac
+        uci commit killswitch
+    done
+}
+
+menu_dns() {
+    while true; do
+        load_config
+        clear
+        echo "${BOLD}=== DNS / DoH / DoQ / QUIC ===${RESET}"
+        echo "  DoH servers: ${DOH_SERVERS:-<пусто>}"
+        echo ""
+        echo "  1) Управлять DoH-серверами"
+        echo "  2) DNS блок (53/853/8853)"
+        echo "  3) DoH блок (443)"
+        echo "  4) DoQ блок (784)"
+        echo "  5) QUIC блок (UDP/443)"
+        echo "  0) Назад"
+        read -r -p "Выбор [0-5]: " opt
+        case "$opt" in
+            1) manage_list doh server "DoH серверов" validate_ip_plain ;;
+            2) set_boolean dns_block_enabled "$DNS_BLOCK" "DNS блок?" ;;
+            3) set_boolean doh_block_enabled "$DOH_BLOCK" "DoH блок?" ;;
+            4) set_boolean doq_block_enabled "$DOQ_BLOCK" "DoQ блок?" ;;
+            5) set_boolean quic_block_enabled "$QUIC_BLOCK" "QUIC блок?" ;;
+            0) break ;;
+        esac
+        uci commit killswitch
+    done
+}
+
+menu_arp() {
+    while true; do
+        load_config
+        clear
+        echo "${BOLD}=== ARP защита ===${RESET}"
+        echo "  arp_protection  : ${ARP_PROT}"
+        echo "  arp_interface   : ${ARP_IFACE:-<авто>}"
+        echo "  arp_gateways    : ${ARP_GATEWAYS:-<не задано>}"
+        echo "  arp_gateway_mac : ${ARP_GATEWAY_MACS:-<не задано>}"
+        echo ""
+        echo "  1) Вкл/выкл ARP защиту"
+        echo "  2) Задать arp_interface"
+        echo "  3) Управлять arp_gateway (IP)"
+        echo "  4) Управлять arp_gateway_mac"
+        echo "  0) Назад"
+        read -r -p "Выбор [0-4]: " opt
+        case "$opt" in
+            1) set_boolean arp_protection "$ARP_PROT" "ARP защита?" ;;
+            2) set_string arp_interface "$ARP_IFACE" "ARP интерфейс" ;;
+            3) manage_list main arp_gateway "ARP шлюзов (IP)" validate_ip_plain ;;
+            4) manage_list main arp_gateway_mac "MAC шлюзов" validate_mac ;;
+            0) break ;;
+        esac
+        uci commit killswitch
+    done
+}
+
+menu_logging() {
+    while true; do
+        load_config
+        clear
+        echo "${BOLD}=== Логи ===${RESET}"
+        echo "  1) log_suspicious : ${LOG_SUSP}"
+        echo "  2) log_drops      : ${LOG_DROPS}"
+        echo "  3) log_file       : ${LOG_FILE:-<не задан>}"
+        echo "  4) log_max_kb     : ${LOG_MAX_KB}"
+        echo "  0) Назад"
+        read -r -p "Выбор [0-4]: " opt
+        case "$opt" in
+            1) set_boolean log_suspicious "$LOG_SUSP" "Логировать подозрительную активность?" ;;
+            2) set_boolean log_drops "$LOG_DROPS" "Логировать дропы терминальных правил?" ;;
+            3) set_string log_file "$LOG_FILE" "Путь к лог-файлу (пусто = syslog)" ;;
+            4) set_string log_max_kb "$LOG_MAX_KB" "Максимум (KB)" validate_positive_int ;;
+            0) break ;;
+        esac
+        uci commit killswitch
+    done
+}
+
+menu_lists() {
+    while true; do
+        clear
+        echo "${BOLD}=== Управление списками ===${RESET}"
+        echo "  1) allowed_mark"
+        echo "  2) allowed_iface"
+        echo "  3) static_vps"
+        echo "  4) ntp_servers"
+        echo "  0) Назад"
+        read -r -p "Выбор [0-4]: " opt
+        case "$opt" in
+            1) manage_list main allowed_mark "маркеров" ;;
+            2) manage_list main allowed_iface "интерфейсов" ;;
+            3) manage_list main static_vps "статических VPS" validate_ip_cidr ;;
+            4) manage_list main ntp_servers "NTP серверов" validate_ip_plain ;;
+            0) break ;;
+        esac
+        uci commit killswitch
+    done
+}
+
+menu_ops() {
+    while true; do
+        clear
+        echo "${BOLD}=== Операции ksd ===${RESET}"
+        echo "  1) status"
+        echo "  2) self-test"
+        echo "  3) dry-run full"
+        echo "  4) dry-run baseline"
+        echo "  5) install (baseline → full)"
+        echo "  6) reset-counters"
+        echo "  7) показать версию и хеш"
+        echo "  8) показать логи ksd"
+        echo "  9) restart / reload"
+        echo " 10) remove-all (снос всех nft-объектов ksd)"
+        echo "  0) Назад"
+        read -r -p "Выбор [0-10]: " opt
+        case "$opt" in
+            1) clear; $KSD status -config "$CONFIG"; echo; read -r -p "Enter..." d ;;
+            2) clear; $KSD self-test -config "$CONFIG"; echo; read -r -p "Enter..." d ;;
+            3) clear; $KSD dry-run full -config "$CONFIG"; echo; read -r -p "Enter..." d ;;
+            4) clear; $KSD dry-run baseline -config "$CONFIG"; echo; read -r -p "Enter..." d ;;
+            5) clear; $KSD install -config "$CONFIG"; echo; read -r -p "Enter..." d ;;
+            6) clear; $KSD reset-counters -config "$CONFIG"; echo; read -r -p "Enter..." d ;;
+            7) show_artifact_info ;;
+            8) clear; logread | grep -iE 'ksd' | tail -60; echo; read -r -p "Enter..." d ;;
+            9) clear; $INIT restart; echo "${GREEN}✓ restart выполнен${RESET}"; sleep 2; $KSD status -config "$CONFIG" | head -8; echo; read -r -p "Enter..." d ;;
+            10)
+                echo "${RED}Внимание: удалит все nft-таблицы ksd.${RESET}"
+                read -r -p "Продолжить? [y/N]: " c
+                case "$c" in y|Y) $KSD remove-all -config "$CONFIG" ;; *) echo "Отменено" ;; esac
+                echo; read -r -p "Enter..." d ;;
+            0) break ;;
+        esac
+    done
+}
+
+apply_and_restart() {
+    clear
+    echo "${BOLD}Применение конфига и перезапуск ksd${RESET}"
+    uci commit killswitch
+    echo "${DIM}Перезапуск...${RESET}"
+    $INIT restart
+    sleep 2
+    echo ""
+    $KSD status -config "$CONFIG" | head -12
+    echo ""
+    read -r -p "Enter..." d
+}
+
+main_menu() {
+    while true; do
+        clear
+        echo "${BOLD}=== Конфигуратор ksd ===${RESET}"
+        echo ""
+        echo "  1) Показать текущую конфигурацию"
+        echo "  2) Основные параметры"
+        echo "  3) Сетевые настройки"
+        echo "  4) Тайминги / предохранитель"
+        echo "  5) DNS / DoH / DoQ / QUIC"
+        echo "  6) ARP защита"
+        echo "  7) Логи"
+        echo "  8) Управление списками"
+        echo "  9) Операции ksd (status/self-test/dry-run/install)"
+        echo " 10) Применить и перезапустить"
+        echo " 11) Показать все UCI-опции"
+        echo " 12) Показать артефакт (хеш/версия)"
+        echo "  0) Выход"
+        echo ""
+        read -r -p "Выбор [0-12]: " choice
+        case "$choice" in
+            1) show_config; read -r -p "Enter..." d ;;
+            2) menu_basic ;;
+            3) menu_network ;;
+            4) menu_timing ;;
+            5) menu_dns ;;
+            6) menu_arp ;;
+            7) menu_logging ;;
+            8) menu_lists ;;
+            9) menu_ops ;;
+            10) apply_and_restart ;;
+            11) clear; uci show killswitch; echo; read -r -p "Enter..." d ;;
+            12) show_artifact_info ;;
+            0) echo "Выход."; break ;;
+        esac
+    done
+}
+
+load_config
+main_menu
