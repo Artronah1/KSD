@@ -1,7 +1,5 @@
-# KSD
-Killswitch  openwrt write on go for passwall 2
 # KSD — Killswitch daemon for OpenWrt
-
+![KSD](Project.jpg)
 Демон на Go, реализующий fail-close killswitch для OpenWrt поверх nftables.
 Предназначен для использования с Passwall2: весь немаркированный трафик
 блокируется, если он не идёт к разрешённым VPS-адресам.
