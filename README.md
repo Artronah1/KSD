@@ -1,5 +1,12 @@
 # KSD — Killswitch daemon for OpenWrt
-![KSD](Project.jpg)
+<p align="center">
+  <img src="Project.png" alt="KSD" width="350">
+</p>
+<p align="center">
+  <img src="https://img.shields.io/badge/Go-1.22-00ADD8?logo=go&logoColor=white" alt="Go">
+  <img src="https://img.shields.io/badge/Platform-OpenWrt-orange" alt="OpenWrt">
+  <img src="https://img.shields.io/badge/Status-v4.0--dev-yellow" alt="Status">
+</p>
 Демон на Go, реализующий fail-close killswitch для OpenWrt поверх nftables.
 Предназначен для использования с Passwall2: весь немаркированный трафик
 блокируется, если он не идёт к разрешённым VPS-адресам.
