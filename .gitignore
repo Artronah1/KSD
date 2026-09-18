@@ -1,0 +1,22 @@
+# Binaries
+ksd
+ksd-arm64
+KSD
+ksd-*
+*.exe
+*.bin
+*.out
+
+# System
+.DS_Store
+Thumbs.db
+
+# Editors
+.vscode/
+.idea/
+*.swp
+
+# Personal
+абоут.txt
+photo_*.jpg
+*.log

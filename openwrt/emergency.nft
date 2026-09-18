@@ -1,0 +1,42 @@
+# Layer 0 emergency ruleset — STATIC. Do not template this file.
+#
+# Applied at START=15, before UCI is read and before the WAN exists.
+# Goal: nothing leaves the box except DHCP, PMTU-related ICMP and traffic on
+# trusted interfaces. ksd destroys this table once its own ruleset is live.
+#
+# Keep it dependency-free: no sets sourced from elsewhere, no shell expansion.
+
+table inet ks_emergency {
+    set trusted {
+        type ifname
+        flags interval
+        elements = { lo, br-lan }
+    }
+
+    chain output {
+        type filter hook output priority 0; policy drop;
+
+        ct state invalid drop
+        meta nfproto ipv4 udp sport 68 udp dport 67 accept
+        meta nfproto ipv6 udp sport 546 udp dport 547 accept
+        ct state related icmp type { destination-unreachable, time-exceeded } accept
+        ct state related icmpv6 type { destination-unreachable, packet-too-big, time-exceeded } accept
+
+        oifname @trusted accept
+
+        udp dport { 53, 853, 8853 } drop
+        tcp dport { 53, 853, 8853 } drop
+        udp dport 784 drop
+
+        ct state established,related accept
+        meta nfproto ipv6 drop
+    }
+
+    chain forward {
+        type filter hook forward priority 0; policy drop;
+
+        ct state invalid drop
+        iifname @trusted oifname @trusted accept
+        ct state established,related accept
+    }
+}

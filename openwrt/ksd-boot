@@ -1,0 +1,31 @@
+#!/bin/sh /etc/rc.common
+# Layer 0 — emergency fail-close, installed before anything else.
+#
+# This script contains no logic, no UCI reads and no dependencies beyond nft.
+# It applies one static ruleset file. If ksd (Layer 1) never starts, this is
+# what keeps the router from leaking — that is the whole point of keeping it
+# separate and dumb.
+#
+# ksd removes ks_emergency as soon as its own ruleset is verified live.
+
+START=15
+STOP=99
+
+EXTRA_COMMANDS="drop"
+EXTRA_HELP="        drop   Apply the emergency ruleset right now"
+
+RULES=/etc/ksd/emergency.nft
+
+apply_emergency() {
+    [ -f "$RULES" ] || { logger -t ksd-boot "CRITICAL: $RULES missing"; return 1; }
+    nft -f "$RULES" 2>/dev/null || {
+        logger -t ksd-boot "CRITICAL: failed to apply $RULES"
+        return 1
+    }
+    logger -t ksd-boot "emergency fail-close ruleset applied"
+    return 0
+}
+
+start() { apply_emergency; }
+boot()  { apply_emergency; }
+drop()  { apply_emergency; }
