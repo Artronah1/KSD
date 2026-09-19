@@ -64,8 +64,8 @@ After making changes, use the "Apply and restart" menu item.
 
 - [CONFIG.md](CONFIG.md) — description of all UCI options
 - [BUILD.md](BUILD.md) — build details
-- [docs/OPERATOR.md](docs/OPERATOR.md) — operator guide
-- [docs/DESCRIPTION.zh.md](docs/DESCRIPTION.zh.md) — description in Chinese
+- [docs/OPERATOR.en.md](docs/OPERATOR.en.md) — operator guide
+- [docs/DESCRIPTION.en.md](docs/DESCRIPTION.en.md) — project description
 
 ## License
 

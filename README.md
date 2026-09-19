@@ -65,7 +65,7 @@
 - [CONFIG.md](CONFIG.md) — описание всех UCI-опций
 - [BUILD.md](BUILD.md) — детали сборки
 - [docs/OPERATOR.md](docs/OPERATOR.md) — операторское руководство
-- [docs/DESCRIPTION.zh.md](docs/DESCRIPTION.zh.md) — описание на китайском
+- [docs/DESCRIPTION.md](docs/DESCRIPTION.md) — описание проекта
 
 ## Лицензия
 

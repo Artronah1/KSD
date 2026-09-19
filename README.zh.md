@@ -64,8 +64,8 @@
 
 - [CONFIG.md](CONFIG.md) — 所有 UCI 选项说明
 - [BUILD.md](BUILD.md) — 编译细节
-- [docs/OPERATOR.md](docs/OPERATOR.md) — 运维手册
-- [docs/DESCRIPTION.zh.md](docs/DESCRIPTION.zh.md) — 中文说明
+- [docs/OPERATOR.zh.md](docs/OPERATOR.zh.md) — 运维手册
+- [docs/DESCRIPTION.zh.md](docs/DESCRIPTION.zh.md) — 项目说明
 
 ## 许可证
 
