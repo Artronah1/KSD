@@ -1,19 +1,50 @@
-name: Release with SLSA Provenance
+name: Release
 
 on:
   release:
     types: [created]
+  # Позволяет запустить вручную из вкладки Actions
+  workflow_dispatch:
 
-permissions: read-all
+permissions:
+  contents: write
 
 jobs:
   build:
-    permissions:
-      id-token: write
-      contents: write
-      actions: read
-    uses: slsa-framework/slsa-github-generator/.github/workflows/builder_go_slsa3.yml@v2.0.0
-    with:
-      go-version: '1.22'
-      config-file: .slsa-goreleaser.yml
-      evaluated-envs: 'GOOS=linux,GOARCH=arm64'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - goarch: arm64
+            name: ksd-arm64
+          - goarch: amd64
+            name: ksd-amd64
+          - goarch: mipsle
+            name: ksd-mipsle
+            extra: GOMIPS=softfloat
+          - goarch: mips
+            name: ksd-mips
+            extra: GOMIPS=softfloat
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+
+      - name: Build
+        env:
+          GOOS: linux
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: '0'
+        run: |
+          ${{ matrix.extra }} go build -trimpath -ldflags="-s -w" -o ${{ matrix.name }} .
+
+      - name: Upload artifact to release
+        uses: softprops/action-gh-release@v2
+        if: github.event_name == 'release'
+        with:
+          files: ${{ matrix.name }}
