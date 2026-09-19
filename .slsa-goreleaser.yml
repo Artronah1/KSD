@@ -1,0 +1,6 @@
+version: 1
+binary: ksd
+main: .
+ldflags:
+  - "-s"
+  - "-w"
