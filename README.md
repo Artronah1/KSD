@@ -28,6 +28,23 @@
 - Периодическая верификация правил в ядре
 - Нулевые внешние зависимости (CGO_ENABLED=0, статическая сборка)
 
+### Скачивание
+
+Выбери файл под архитектуру роутера (`uname -m`):
+
+| `uname -m` | Файл |
+|---|---|
+| `aarch64` | `ksd-arm64` |
+| `x86_64` | `ksd-amd64` |
+| `mips` | `ksd-mips` |
+| `mipsel` | `ksd-mipsle` |
+
+Скачай со страницы релиза:
+https://github.com/Artronah1/KSD/releases/latest
+
+Проверь sha256:
+    sha256sum ksd-arm64
+
 ## Сборка
 
     go build -o ksd ./...
@@ -38,27 +55,51 @@
 
 ## Установка
 
-1. Скопировать бинарник на роутер:
-       scp ksd root@192.168.1.1:/usr/sbin/ksd
+> ⚠️ **Держи UART или вторую SSH-сессию открытой.** Если ksd заблокирует доступ — восстановишь оттуда.
 
-2. Установить UCI-конфиг:
+1. Скачать бинарник под архитектуру роутера (`uname -m`):
+
+       wget https://github.com/Artronah1/KSD/releases/latest/download/ksd-arm64
+       sha256sum ksd-arm64
+
+   Хеш должен совпасть с `sha256` на странице релиза.
+
+2. Скопировать файлы на роутер:
+
+       scp ksd-arm64 root@192.168.1.1:/tmp/ksd
        scp openwrt/killswitch.config root@192.168.1.1:/etc/config/killswitch
+       scp openwrt/ksd-boot root@192.168.1.1:/etc/init.d/ksd-boot
 
-3. Установить init-скрипт:
-       scp openwrt/ksd-boot root@192.168.1.1:/etc/init.d/ksd
-       ssh root@192.168.1.1 'chmod +x /etc/init.d/ksd && /etc/init.d/ksd enable'
+3. Установить на роутере:
 
-4. Запустить:
-       ssh root@192.168.1.1 '/etc/init.d/ksd start'
+       ssh root@192.168.1.1
 
-## Конфигуратор
+       cp /tmp/ksd /usr/sbin/ksd
+       chmod +x /usr/sbin/ksd /etc/init.d/ksd-boot
+       /etc/init.d/ksd-boot enable
 
-Интерактивный TUI-конфигуратор для UCI:
+4. Проверить конфиг `/etc/config/killswitch`:
 
-    scripts/ksd-configurator
+       nano /etc/config/killswitch
 
-Позволяет управлять всеми опциями `/etc/config/killswitch` без ручного `uci set`.
-После изменений используйте пункт «Применить и перезапустить».
+   Убедиться, что корректны: `source_set`, `wan_interface` / `wan_device`,
+   `allowed_iface`, `arp_protection` и `arp_gateway_mac`.
+
+5. Первый запуск:
+
+       /usr/sbin/ksd install -config /etc/config/killswitch
+
+6. Автозапуск и старт:
+
+       /etc/init.d/ksd enable
+       /etc/init.d/ksd start
+
+7. Проверка:
+
+       /usr/sbin/ksd status -config /etc/config/killswitch
+       /usr/sbin/ksd self-test -config /etc/config/killswitch
+
+   Оба должны показать `[OK]` и `Result: PASS`.
 
 ## Документация
 

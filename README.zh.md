@@ -38,19 +38,52 @@
 
 ## 安装
 
-1. 将二进制文件复制到路由器：
-       scp ksd root@192.168.1.1:/usr/sbin/ksd
+> ⚠️ **请保持 UART 或第二个 SSH 会话开启。** 如果 ksd 阻断了访问，可从此处恢复。
 
-2. 安装 UCI 配置：
+1. 根据路由器架构（`uname -m`）下载对应二进制文件：
+
+       wget https://github.com/Artronah1/KSD/releases/latest/download/ksd-arm64
+       sha256sum ksd-arm64
+
+   校验值应与发布页上的 `sha256` 一致。
+
+2. 将文件复制到路由器：
+
+       scp ksd-arm64 root@192.168.1.1:/tmp/ksd
        scp openwrt/killswitch.config root@192.168.1.1:/etc/config/killswitch
+       scp openwrt/ksd-boot root@192.168.1.1:/etc/init.d/ksd-boot
 
-3. 安装 init 脚本：
-       scp openwrt/ksd-boot root@192.168.1.1:/etc/init.d/ksd
-       ssh root@192.168.1.1 'chmod +x /etc/init.d/ksd && /etc/init.d/ksd enable'
+3. 在路由器上安装：
 
-4. 启动：
-       ssh root@192.168.1.1 '/etc/init.d/ksd start'
+       ssh root@192.168.1.1
 
+       cp /tmp/ksd /usr/sbin/ksd
+       chmod +x /usr/sbin/ksd /etc/init.d/ksd-boot
+       /etc/init.d/ksd-boot enable
+
+4. 检查配置 `/etc/config/killswitch`：
+
+       nano /etc/config/killswitch
+
+   确认以下项正确：`source_set`、`wan_interface` / `wan_device`、
+   `allowed_iface`、`arp_protection` 和 `arp_gateway_mac`。
+
+5. 首次运行：
+
+       /usr/sbin/ksd install -config /etc/config/killswitch
+
+6. 开机自启与启动：
+
+       /etc/init.d/ksd enable
+       /etc/init.d/ksd start
+
+7. 验证：
+
+       /usr/sbin/ksd status -config /etc/config/killswitch
+       /usr/sbin/ksd self-test -config /etc/config/killswitch
+
+   两条命令均应显示 `[OK]` 和 `Result: PASS`。
+   
 ## 配置工具
 
 交互式 UCI TUI 配置工具：

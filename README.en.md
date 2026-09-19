@@ -38,18 +38,51 @@ Cross-compiling for OpenWrt (ARM64 example):
 
 ## Installation
 
-1. Copy the binary to the router:
-       scp ksd root@192.168.1.1:/usr/sbin/ksd
+> ⚠️ **Keep UART or a second SSH session open.** If ksd blocks access, you will be able to recover from there.
 
-2. Install the UCI config:
+1. Download the binary for your router architecture (`uname -m`):
+
+       wget https://github.com/Artronah1/KSD/releases/latest/download/ksd-arm64
+       sha256sum ksd-arm64
+
+   The hash must match the `sha256` value on the release page.
+
+2. Copy the files to the router:
+
+       scp ksd-arm64 root@192.168.1.1:/tmp/ksd
        scp openwrt/killswitch.config root@192.168.1.1:/etc/config/killswitch
+       scp openwrt/ksd-boot root@192.168.1.1:/etc/init.d/ksd-boot
 
-3. Install the init script:
-       scp openwrt/ksd-boot root@192.168.1.1:/etc/init.d/ksd
-       ssh root@192.168.1.1 'chmod +x /etc/init.d/ksd && /etc/init.d/ksd enable'
+3. Install on the router:
 
-4. Start it:
-       ssh root@192.168.1.1 '/etc/init.d/ksd start'
+       ssh root@192.168.1.1
+
+       cp /tmp/ksd /usr/sbin/ksd
+       chmod +x /usr/sbin/ksd /etc/init.d/ksd-boot
+       /etc/init.d/ksd-boot enable
+
+4. Check the config `/etc/config/killswitch`:
+
+       nano /etc/config/killswitch
+
+   Make sure these are correct: `source_set`, `wan_interface` / `wan_device`,
+   `allowed_iface`, `arp_protection` and `arp_gateway_mac`.
+
+5. First run:
+
+       /usr/sbin/ksd install -config /etc/config/killswitch
+
+6. Enable autostart and start:
+
+       /etc/init.d/ksd enable
+       /etc/init.d/ksd start
+
+7. Verify:
+
+       /usr/sbin/ksd status -config /etc/config/killswitch
+       /usr/sbin/ksd self-test -config /etc/config/killswitch
+
+   Both should show `[OK]` and `Result: PASS`.
 
 ## Configurator
 
