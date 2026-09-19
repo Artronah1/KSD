@@ -69,7 +69,11 @@ After making changes, use the "Apply and restart" menu item.
 
 ## License
 
-MIT License — see [LICENSE](LICENSE) for details.
+Mulan Public License, Version 2 (Mulan PubL v2) — see [LICENSE](LICENSE) for details.
+
+**Copyleft** with a network clause: derivative works, including providing
+services over a network, must be distributed under the same license with
+source code available.
 
 ## Status
 
