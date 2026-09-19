@@ -1,4 +1,9 @@
 # KSD — Killswitch daemon for OpenWrt
+<p align="left">
+  <a href="./README.md"><img src="https://img.shields.io/badge/lang-Русский-brightgreen.svg" alt="Русский"></a>
+  <a href="./README.en.md"><img src="https://img.shields.io/badge/lang-English-blue.svg" alt="English"></a>
+  <a href="./README.zh.md"><img src="https://img.shields.io/badge/lang-中文-blue.svg" alt="中文"></a>
+</p>
 <p align="center">
   <img src="Project.png" alt="KSD" width="350">
 </p>
