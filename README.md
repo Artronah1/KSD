@@ -1,4 +1,4 @@
-# KSD — Killswitch daemon for OpenWrt
+# ksd — демон Killswitch для OpenWrt
 <p align="left">
   <a href="./README.md"><img src="https://img.shields.io/badge/lang-Русский-brightgreen.svg" alt="Русский"></a>
   <a href="./README.en.md"><img src="https://img.shields.io/badge/lang-English-blue.svg" alt="English"></a>
@@ -69,8 +69,7 @@
 
 ## Лицензия
 
-Проект распространяется без лицензии (all rights reserved).
-Исходный код является частной разработкой.
+MIT License — подробности в [LICENSE](LICENSE).
 
 ## Статус
 

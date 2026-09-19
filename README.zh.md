@@ -1,8 +1,11 @@
-# KSD — OpenWrt Killswitch 守护进程
+# ksd — OpenWrt Killswitch 守护进程
 <p align="left">
   <a href="./README.md"><img src="https://img.shields.io/badge/lang-Русский-blue.svg" alt="Русский"></a>
   <a href="./README.en.md"><img src="https://img.shields.io/badge/lang-English-blue.svg" alt="English"></a>
   <a href="./README.zh.md"><img src="https://img.shields.io/badge/lang-中文-brightgreen.svg" alt="中文"></a>
+</p>
+<p align="center">
+  <img src="Project.png" alt="KSD" width="350">
 </p>
 <p align="center">
   <img src="https://img.shields.io/badge/Go-1.22-00ADD8?logo=go&logoColor=white" alt="Go">
@@ -66,8 +69,7 @@
 
 ## 许可证
 
-本项目不附带许可证（保留所有权利）。
-源代码为私人开发。
+MIT License — 详见 [LICENSE](LICENSE)。
 
 ## 状态
 

@@ -86,16 +86,7 @@ semantic_verify_enabled
 
 ---
 
-## 两点必须提醒
-
-### 代码未经编译
-
-当前环境无 Go 工具链。拿到后先跑：
-
-```bash
-go vet ./...
-go build ./...
-```
+## 一点必须提醒
 
 ### `nft flush table` 的隐患（shell 版就存在）
 

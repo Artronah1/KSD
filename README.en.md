@@ -1,4 +1,4 @@
-# KSD — Killswitch daemon for OpenWrt
+# ksd — Killswitch daemon for OpenWrt
 <p align="left">
   <a href="./README.md"><img src="https://img.shields.io/badge/lang-Русский-blue.svg" alt="Русский"></a>
   <a href="./README.en.md"><img src="https://img.shields.io/badge/lang-English-brightgreen.svg" alt="English"></a>
@@ -69,8 +69,7 @@ After making changes, use the "Apply and restart" menu item.
 
 ## License
 
-The project is distributed without a license (all rights reserved).
-The source code is a private development.
+MIT License — see [LICENSE](LICENSE) for details.
 
 ## Status
 

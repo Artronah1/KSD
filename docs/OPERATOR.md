@@ -124,32 +124,32 @@ uci commit killswitch
 ### 2. Изменение кода (сборка новой версии)
 
 ```bash
-# 1. Правишь исходник
+## 1. Правишь исходник
 cd ~/ksd
 nano daemon.go
 
-# 2. Проверка
+## 2. Проверка
 go vet ./...
 go build ./...
 
-# 3. Кросс-сборка
+## 3. Кросс-сборка
 GOOS=linux GOARCH=arm64 CGO_ENABLED=0 \
   go build -trimpath -ldflags="-s -w" -o ksd-arm64 .
 sha256sum ksd-arm64
 
-# 4. Копирование на роутер
+## 4. Копирование на роутер
 scp ksd-arm64 root@192.168.1.1:/tmp/ksd-new
 
-# 5. На роутере: замена бинарника
+## 5. На роутере: замена бинарника
 cp /tmp/ksd-new /usr/sbin/ksd.new
 chmod 755 /usr/sbin/ksd.new
 mv /usr/sbin/ksd.new /usr/sbin/ksd
 
-# 6. Проверка до применения
+## 6. Проверка до применения
 ksd dry-run full
 ksd self-test
 
-# 7. Перезапуск
+## 7. Перезапуск
 /etc/init.d/ksd restart
 ksd status
 ```

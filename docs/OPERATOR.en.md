@@ -124,32 +124,32 @@ Full description of all options and defaults: `CONFIG.md`.
 ### 2. Code changes (building a new version)
 
 ```bash
-# 1. Edit the source
+## 1. Edit the source
 cd ~/ksd
 nano daemon.go
 
-# 2. Check
+## 2. Check
 go vet ./...
 go build ./...
 
-# 3. Cross-build
+## 3. Cross-build
 GOOS=linux GOARCH=arm64 CGO_ENABLED=0 \
   go build -trimpath -ldflags="-s -w" -o ksd-arm64 .
 sha256sum ksd-arm64
 
-# 4. Copy to the router
+## 4. Copy to the router
 scp ksd-arm64 root@192.168.1.1:/tmp/ksd-new
 
-# 5. On the router: replace the binary
+## 5. On the router: replace the binary
 cp /tmp/ksd-new /usr/sbin/ksd.new
 chmod 755 /usr/sbin/ksd.new
 mv /usr/sbin/ksd.new /usr/sbin/ksd
 
-# 6. Check before applying
+## 6. Check before applying
 ksd dry-run full
 ksd self-test
 
-# 7. Restart
+## 7. Restart
 /etc/init.d/ksd restart
 ksd status
 ```

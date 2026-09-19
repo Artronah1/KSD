@@ -86,16 +86,7 @@ With a resident process, the problems they compensated for no longer exist. `CON
 
 ---
 
-## Two things you must be aware of
-
-### The code has not been compiled
-
-The environment this was written in has no Go toolchain. Once you have the code, run this first:
-
-```bash
-go vet ./...
-go build ./...
-```
+## One thing you must be aware of
 
 ### A pitfall with `nft flush table` (already present in the shell version)
 
