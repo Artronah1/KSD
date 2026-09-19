@@ -128,6 +128,11 @@ func BuildFull(c *Config, wan, gw string, vps []string) []Table {
 		Name: OutputChain, Type: "filter", Hook: "output",
 		Priority: c.FilterPriority, Policy: "drop",
 	}
+	//Local loopback accept
+	out.Rules = append(out.Rules, Rule{
+		Comment: "ks-loopback", Expr: `oifname "lo"`,
+		Anon: true, Verdict: "accept",
+	})
 
 	// 1. invalid first — everything else assumes a sane conntrack state
 	out.Rules = append(out.Rules, Rule{

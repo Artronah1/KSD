@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -153,6 +154,18 @@ func sameStrings(a, b []string) bool {
 	return true
 }
 
+// warnedElems remembers the last set of invalid elements we already warned
+// about, so repeated polls don't spam the log with the same message.
+var warnedElems = map[string]bool{}
+
+func warnOnce(e string) {
+	if warnedElems[e] {
+		return
+	}
+	warnedElems[e] = true
+	Warnf("skipping invalid VPS element %q", e)
+}
+
 // NormalizeVPS dedups, drops invalid entries and enforces the size cap.
 // A non-nil error means "reject the whole update": the caller must leave the
 // current kernel set untouched rather than installing a truncated one.
@@ -161,14 +174,34 @@ func NormalizeVPS(in []string, max int) ([]string, error) {
 	var ok []string
 	for _, e := range in {
 		e = trimSpace(e)
-		if e == "" || seen[e] {
+		if e == "" {
+			continue
+		}
+		// Expand "A-B" into two separate addresses.
+		if strings.Contains(e, "-") && !strings.Contains(e, "/") {
+			if lo, hi, ok2 := splitRange(e); ok2 {
+				for _, a := range []string{lo, hi} {
+					if seen[a] {
+						continue
+					}
+					seen[a] = true
+					if validVPSElem(a) {
+						ok = append(ok, a)
+					} else {
+						warnOnce(a)
+					}
+				}
+				continue
+			}
+		}
+		if seen[e] {
 			continue
 		}
 		seen[e] = true
 		if validVPSElem(e) {
 			ok = append(ok, e)
 		} else {
-			Warnf("skipping invalid VPS element %q", e)
+			warnOnce(e)
 		}
 	}
 	if max > 0 && len(ok) > max {

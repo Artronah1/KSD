@@ -394,12 +394,36 @@ func (c *Config) EmptyGrace() time.Duration {
 	return time.Duration(c.EmptySourceGraceSec) * time.Second
 }
 
-// validVPSElem accepts a bare IPv4 address or a CIDR prefix.
+/// validVPSElem accepts a bare IPv4 address, a CIDR prefix, or a range "A-B".
 func validVPSElem(s string) bool {
 	if strings.Contains(s, "/") {
 		_, _, err := net.ParseCIDR(s)
 		return err == nil && strings.Contains(s, ".")
 	}
+	if strings.Contains(s, "-") {
+		lo, hi, ok := splitRange(s)
+		if !ok {
+			return false
+		}
+		a := net.ParseIP(lo)
+		b := net.ParseIP(hi)
+		return a != nil && a.To4() != nil && b != nil && b.To4() != nil
+	}
 	ip := net.ParseIP(s)
 	return ip != nil && ip.To4() != nil
+}
+
+// splitRange splits "A-B" into ("A", "B", true). Returns ok=false if the
+// string does not contain exactly one '-' or either side is empty.
+func splitRange(s string) (string, string, bool) {
+	i := strings.Index(s, "-")
+	if i <= 0 || i >= len(s)-1 {
+		return "", "", false
+	}
+	lo := strings.TrimSpace(s[:i])
+	hi := strings.TrimSpace(s[i+1:])
+	if lo == "" || hi == "" {
+		return "", "", false
+	}
+	return lo, hi, true
 }
