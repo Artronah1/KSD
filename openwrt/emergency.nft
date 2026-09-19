@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Artronah1
+#
+# SPDX-License-Identifier: MulanPubL-2.0
 # Layer 0 emergency ruleset — STATIC. Do not template this file.
 #
 # Applied at START=15, before UCI is read and before the WAN exists.

@@ -1,4 +1,6 @@
 #!/bin/sh /etc/rc.common
+# Copyright (c) 2026 Artronah1
+# SPDX-License-Identifier: MulanPubL-2.0
 # Layer 0 — emergency fail-close, installed before anything else.
 #
 # This script contains no logic, no UCI reads and no dependencies beyond nft.

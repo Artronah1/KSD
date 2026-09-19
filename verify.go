@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Artronah1
+// SPDX-License-Identifier: MulanPubL-2.0
+
 package main
 
 // verify.go — is what we think is installed actually installed?

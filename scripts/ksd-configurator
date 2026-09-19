@@ -1,4 +1,6 @@
 #!/bin/sh
+# Copyright (c) 2026 Artronah1
+# SPDX-License-Identifier: MulanPubL-2.0
 # Интерактивный конфигуратор для ksd (Go-версия killswitch)
 # Управляет /etc/config/killswitch через UCI.
 # Все операции — через /usr/sbin/ksd <cmd> -config /etc/config/killswitch
