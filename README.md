@@ -101,6 +101,30 @@ https://github.com/Artronah1/KSD/releases/latest
 
    Оба должны показать `[OK]` и `Result: PASS`.
 
+## Автоматическая установка
+
+Универсальный installer: сам определяет архитектуру, WAN, LAN-бриджи,
+шлюз и его MAC, источник VPS, генерирует `/etc/config/killswitch`,
+скачивает подходящий бинарник и устанавливает сервис.
+
+**На роутере:**
+
+    wget -O /tmp/install.sh https://raw.githubusercontent.com/Artronah1/KSD/main/scripts/install.sh
+    sh /tmp/install.sh
+
+**Опции:**
+
+    sh /tmp/install.sh -v v1.1.4        # конкретная версия
+    sh /tmp/install.sh -f /tmp/ksd-arm64  # локальный бинарник
+
+**Если конфиг `/etc/config/killswitch` уже существует** — installer его
+сохранит и не тронет. Проверь значения `source_set`, `wan_device`,
+`arp_gateway` **вручную**.
+
+**После установки** — `restart`:
+
+    /etc/init.d/ksd restart
+
 ## Документация
 
 - [CONFIG.md](CONFIG.md) — описание всех UCI-опций

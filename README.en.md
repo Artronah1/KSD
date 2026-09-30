@@ -84,6 +84,30 @@ Cross-compiling for OpenWrt (ARM64 example):
 
    Both should show `[OK]` and `Result: PASS`.
 
+## Automatic installation
+
+Universal installer: detects architecture, WAN, LAN bridges, gateway+MAC,
+VPS source set; generates `/etc/config/killswitch`; downloads the matching
+binary; installs the service.
+
+**On the router:**
+
+    wget -O /tmp/install.sh https://raw.githubusercontent.com/Artronah1/KSD/main/scripts/install.sh
+    sh /tmp/install.sh
+
+**Options:**
+
+    sh /tmp/install.sh -v v1.1.4           # pin a version
+    sh /tmp/install.sh -f /tmp/ksd-arm64   # local binary
+
+**If `/etc/config/killswitch` already exists** — the installer keeps it
+and does not touch it. Review `source_set`, `wan_device`, `arp_gateway`
+**manually**.
+
+**After install** — restart:
+
+    /etc/init.d/ksd restart
+
 ## Configurator
 
 Interactive TUI configurator for UCI:

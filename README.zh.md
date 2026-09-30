@@ -83,6 +83,28 @@
        /usr/sbin/ksd self-test -config /etc/config/killswitch
 
    两条命令均应显示 `[OK]` 和 `Result: PASS`。
+
+## 自动安装
+
+通用安装脚本：自动检测架构、WAN、LAN 桥、网关及其 MAC、VPS 源集合；
+生成 `/etc/config/killswitch`；下载对应二进制文件；安装服务。
+
+**在路由器上：**
+
+    wget -O /tmp/install.sh https://raw.githubusercontent.com/Artronah1/KSD/main/scripts/install.sh
+    sh /tmp/install.sh
+
+**选项：**
+
+    sh /tmp/install.sh -v v1.1.4           # 指定版本
+    sh /tmp/install.sh -f /tmp/ksd-arm64   # 使用本地二进制文件
+
+**如果 `/etc/config/killswitch` 已存在** — 安装脚本会保留，不修改。
+请**手动**检查 `source_set`、`wan_device`、`arp_gateway`。
+
+**安装后** — 重启：
+
+    /etc/init.d/ksd restart
    
 ## 配置工具
 
