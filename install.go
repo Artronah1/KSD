@@ -113,8 +113,10 @@ func InstallBaseline(c *Config, st *State, wan string) error {
 	}
 
 	// Fail-close must also invalidate pre-existing sessions, otherwise they
-	// keep flowing through ks-established.
-	if conntrackAvailable() {
+	// keep flowing through ks-established. But only on a real transition:
+	// a repeated baseline install (procd respawn loop on a broken config)
+	// would otherwise flush every stateful session every few seconds.
+	if st.Mode != "baseline" && conntrackAvailable() {
 		if err := ConntrackFlush(); err != nil {
 			Errorf("baseline conntrack flush failed: %v", err)
 		}
