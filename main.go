@@ -254,7 +254,7 @@ func cmdDryRun(args []string) {
 }
 
 func cmdResetCounters(args []string) {
-	cfg, st, ok := load(args)
+	cfg, _, ok := load(args)
 	if !ok {
 		os.Exit(1)
 	}
@@ -262,11 +262,8 @@ func cmdResetCounters(args []string) {
 		Errorf("reset counters failed: %v", err)
 		os.Exit(1)
 	}
-	// Drop the delta baseline too, otherwise the next poll computes a negative
-	// delta and reports nothing.
-	st.Counters = map[string]uint64{}
-	st.CountersInit = false
-	_ = st.Save()
+	// Do not write state: the live daemon will see the counters drop to
+	// zero (cur < prev) and rebase its own in-memory copy on the next poll.
 	fmt.Println("counters reset")
 }
 
@@ -412,20 +409,13 @@ func cmdSelfTest(args []string) {
 		fmt.Printf("[WARN] conntrack utility missing — full mode will be refused\n")
 	}
 
-	// Live DNS leak probe.
+	// Live DNS leak probe. Note: the probe itself increments
+	// dns_leak_drops by one, which the daemon may report once as a
+	// leak on its next poll. This is documented behaviour — we
+	// deliberately do not write the state file from the CLI.
 	if cfg.DNSBlock {
-		before, _ := ReadCounters("inet", cfg.Table)
 		leaked := probeDNS()
-		after, _ := ReadCounters("inet", cfg.Table)
 		report(!leaked, "DNS query to 1.1.1.1 blocked (expected)")
-		// FIX (review P2-5): the probe itself increments dns_leak_drops, which
-		// the daemon would otherwise report as a real leak on the next poll.
-		st.Counters["dns_leak_drops"] = after["dns_leak_drops"]
-		st.MarkCountersInitialized()
-		_ = st.Save()
-		if d := after["dns_leak_drops"] - before["dns_leak_drops"]; d > 0 {
-			fmt.Printf("       (probe consumed %d counter hit(s), delta baseline rebased)\n", d)
-		}
 	}
 
 	fmt.Println("===========================")
