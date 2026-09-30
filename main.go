@@ -18,7 +18,7 @@ import (
 	"time"
 )
 
-const ksdVersion = "1.1.0"
+const ksdVersion = "1.1.1"
 
 func usage() {
 	fmt.Fprintf(os.Stderr, `ksd %s — nftables killswitch daemon for OpenWrt
@@ -135,6 +135,10 @@ func cmdRun(args []string) {
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 	go func() { s := <-sigCh; Infof("signal %v", s); cancel() }()
+	if st.Mode == "full" {
+		selfHealOnStart(cfg, st)
+	}
+
 	NewDaemon(cfg, st).Run(ctx)
 	if cfg.ForceStop {
 		Warnf("force_stop=1 — removing all killswitch objects")
@@ -142,8 +146,42 @@ func cmdRun(args []string) {
 		st.Mode, st.LastVPS, st.FullFail = "removed", nil, 0
 		_ = st.Save()
 	}
+}
 
-	NewDaemon(cfg, st).Run(ctx)
+// selfHealOnStart verifies the live ruleset against the model and, if it
+// diverges, reinstalls full mode in place (single nft transaction, no
+// RemoveAll, no conntrack flush). If reinstall fails, falls back to
+// baseline.
+func selfHealOnStart(cfg *Config, st *State) {
+	wan := DetectWAN(cfg)
+	if wan.Device == "" || !wan.Ready {
+		Debugf("self-heal skipped: WAN not ready")
+		return
+	}
+
+	src := ReadVPSSource(cfg)
+	vps, _ := NormalizeVPS(src.Elements, cfg.MaxVPSElements)
+	if cfg.MergeStaticVPS && len(cfg.StaticVPS) > 0 {
+		vps = append(vps, cfg.StaticVPS...)
+		if nv, err := NormalizeVPS(vps, cfg.MaxVPSElements); err == nil {
+			vps = nv
+		}
+	}
+
+	tables := BuildFull(cfg, wan.Device, wan.GW, vps)
+	if err := Verify(cfg, tables, wan.Device, wan.GW, vps); err == nil {
+		Debugf("self-heal: live ruleset matches model")
+		return
+	} else {
+		Warnf("self-heal: live ruleset does not match model (%v); reinstalling in-place", err)
+	}
+
+	if err := InstallFull(cfg, st, wan.Device, wan.GW, vps); err != nil {
+		Errorf("self-heal: in-place reinstall failed: %v; falling back to baseline", err)
+		if berr := InstallBaseline(cfg, st, wan.Device); berr != nil {
+			Errorf("self-heal: baseline fallback also failed: %v", berr)
+		}
+	}
 }
 
 func cmdInstall(args []string) {
