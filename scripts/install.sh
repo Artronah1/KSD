@@ -88,6 +88,33 @@ fi
 
 chmod +x "$TMPDIR/ksd"
 
+# ---------- obtain configurator (best-effort) ----------
+CFG_SRC=""
+if [ -n "$LOCAL_BIN" ]; then
+    # Local-binary mode: look next to the script.
+    for cand in "./scripts/ksd-configurator" "./ksd-configurator" \
+                "$(dirname "$0")/scripts/ksd-configurator" "$(dirname "$0")/ksd-configurator"; do
+        [ -f "$cand" ] && { CFG_SRC="$cand"; break; }
+    done
+fi
+if [ -z "$CFG_SRC" ]; then
+    if [ "$VERSION" = "latest" ]; then
+        CFG_URL="https://raw.githubusercontent.com/${REPO}/main/scripts/ksd-configurator"
+    else
+        CFG_URL="https://raw.githubusercontent.com/${REPO}/${VERSION}/scripts/ksd-configurator"
+    fi
+    log "fetching configurator from $CFG_URL"
+    if command -v curl >/dev/null 2>&1; then
+        curl -fsSL -o "$TMPDIR/ksd-configurator" "$CFG_URL" 2>/dev/null && CFG_SRC="$TMPDIR/ksd-configurator"
+    elif command -v uclient-fetch >/dev/null 2>&1; then
+        uclient-fetch -q -O "$TMPDIR/ksd-configurator" "$CFG_URL" 2>/dev/null && CFG_SRC="$TMPDIR/ksd-configurator"
+    fi
+    [ -z "$CFG_SRC" ] && warn "configurator download failed (optional)"
+fi
+if [ -n "$CFG_SRC" ]; then
+    chmod +x "$CFG_SRC"
+fi
+
 # ---------- autodetect WAN ----------
 log "detecting WAN"
 WAN_IF="wan"
@@ -169,7 +196,6 @@ chmod +x /usr/sbin/ksd
 HERE="$(dirname "$0")"
 for pair in "ksd:/etc/init.d/ksd" "ksd-boot:/etc/init.d/ksd-boot" "emergency.nft:/etc/ksd/emergency.nft"; do
     src="${pair%%:*}"; dst="${pair##*:}"
-    # Look for the file either in ./openwrt/ or alongside the script.
     for cand in "./openwrt/$src" "./$src" "$HERE/openwrt/$src" "$HERE/$src"; do
         if [ -f "$cand" ]; then
             mkdir -p "$(dirname "$dst")"
@@ -180,6 +206,13 @@ for pair in "ksd:/etc/init.d/ksd" "ksd-boot:/etc/init.d/ksd-boot" "emergency.nft
         fi
     done
 done
+
+# Configurator (optional — may have been fetched or found locally).
+if [ -n "$CFG_SRC" ]; then
+    cp "$CFG_SRC" /usr/bin/ksd-configurator
+    chmod +x /usr/bin/ksd-configurator
+    log "installed configurator → /usr/bin/ksd-configurator"
+fi
 
 # ---------- config ----------
 if [ -f /etc/config/killswitch ]; then
@@ -250,11 +283,28 @@ log "installing baseline + full"
 log "restarting service"
 /etc/init.d/ksd restart 2>/dev/null || warn "ksd restart failed"
 
-sleep 3
+# Wait for full mode. Fresh installs start in baseline, then move to full
+# once the WAN is confirmed — which can take a few seconds.
+i=0
+while [ $i -lt 15 ]; do
+    MODE="$(/usr/sbin/ksd status -config /etc/config/killswitch 2>/dev/null \
+        | awk '/Mode[[:space:]]*:/ {print $3; exit}')"
+    [ "$MODE" = "full" ] && break
+    i=$((i + 1))
+    sleep 1
+done
+
+if [ "$MODE" = "full" ]; then
+    log "reached full mode"
+else
+    warn "still in '$MODE' mode after 15s — check /etc/config/killswitch and WAN"
+fi
+
 log "status:"
 /usr/sbin/ksd status -config /etc/config/killswitch | head -15 || true
 
 log "done. Next steps:"
 echo "  1. review /etc/config/killswitch (adjust source_set if needed)"
 echo "  2. /usr/sbin/ksd self-test -config /etc/config/killswitch"
-echo "  3. keep UART or a second SSH session open if you change firewall rules"
+echo "  3. ksd-configurator  — interactive TUI editor"
+echo "  4. keep UART or a second SSH session open if you change firewall rules"
