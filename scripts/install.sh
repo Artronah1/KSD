@@ -269,7 +269,10 @@ config doh 'doh'
 	list server '149.112.112.112'
 	list server '94.140.14.14'
 	list server '94.140.15.15'
-EOF
+EOFecho "  1. review /etc/config/killswitch (adjust source_set if needed)"
+echo "  2. /usr/sbin/ksd self-test -config /etc/config/killswitch"
+echo "  3. ksd-configurator  — interactive TUI editor"
+echo "  4. keep UART or a second SSH session open if you change firewall rules"
 fi
 
 # ---------- enable + start ----------
@@ -304,7 +307,7 @@ log "status:"
 /usr/sbin/ksd status -config /etc/config/killswitch | head -15 || true
 
 log "done. Next steps:"
-echo "  1. review /etc/config/killswitch (adjust source_set if needed)"
+echo "  1. review /etc/config/killswitch (or run: ksd-config)"
 echo "  2. /usr/sbin/ksd self-test -config /etc/config/killswitch"
-echo "  3. ksd-configurator  — interactive TUI editor"
+echo "  3. ksd-configurator           — interactive TUI editor"
 echo "  4. keep UART or a second SSH session open if you change firewall rules"
