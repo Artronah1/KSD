@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.3] — 2026-09-30
+
+### Added
+
+- **Universal installer** (`scripts/install.sh`): detects architecture,
+  WAN device, LAN bridges, gateway and its MAC, and the VPS source set;
+  generates `/etc/config/killswitch`; downloads the matching binary from
+  GitHub Releases; installs init scripts and enables the service.
+
+### Fixed
+
+- **`ks-loopback` rule** now matches `ip daddr 127.0.0.0/8` instead of
+  `oifname "lo"` — `oifname` is not populated in the `output` hook for
+  locally-generated loopback traffic, so the rule never matched and
+  xray FIN packets hit `invalid_state_drops`.
+- **`nft`, `ubus`, `conntrack`, `ip` subprocess calls** now run with a
+  timeout — a hung child no longer freezes the control loop.
+- **`SIGHUP`** is now handled (previously the default was `terminate`,
+  so a stray HUP killed the daemon).
+- **`InstallBaseline`** skips the conntrack flush on a repeated baseline
+  install — with a broken config and procd respawn, this otherwise
+  flushed every stateful session every few seconds.
+- **CLI (`self-test`, `reset-counters`)** no longer writes the state
+  file — the live daemon holds its own in-memory copy and would either
+  overwrite it or read a stale copy after restart.
+
 ## [1.1.2] — 2026-09-30
 
 ### Added
