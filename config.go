@@ -360,6 +360,17 @@ func (c *Config) Validate() error {
 	if c.MaxVPSElements <= 0 {
 		return fmt.Errorf("max_vps_elements must be > 0")
 	}
+	if c.FullFailMax < 1 {
+		return fmt.Errorf("full_fail_max must be >= 1")
+	}
+	if c.LogMaxKB < 16 {
+		return fmt.Errorf("log_max_kb must be >= 16")
+	}
+	switch c.SourceFamily {
+		case "inet", "ip", "ip6", "arp", "bridge", "netdev":
+		default:
+			return fmt.Errorf("invalid source_set family %q", c.SourceFamily)
+	}
 	if c.PollIntervalSec <= 0 {
 		return fmt.Errorf("poll_interval_sec must be > 0")
 	}
