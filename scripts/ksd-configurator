@@ -5,6 +5,11 @@
 # Управляет /etc/config/killswitch через UCI.
 # Все операции — через /usr/sbin/ksd <cmd> -config /etc/config/killswitch
 #
+# Язык интерфейса: en (по умолчанию) / ru / zh.
+# Выбор сохраняется в /etc/ksd-lang (НЕ в UCI — чтобы не мешать ksd).
+# Добавить язык: определить T_<key>_<lang> и добавить код в case ниже + в menu_lang.
+# Если перевода нет — используется английский (fallback).
+#
 # Что убрано из shell-версии (в ksd этого нет):
 #   semantic_verify_enabled, cache_file, cache_ttl_hours, cache_hard_ttl_hours,
 #   empty_source_threshold, monitoring_enabled, monitoring_interval_minutes,
@@ -17,6 +22,7 @@
 KSD="/usr/sbin/ksd"
 CONFIG="/etc/config/killswitch"
 INIT="/etc/init.d/ksd"
+LANG_FILE="/etc/ksd-lang"
 
 if [ -t 1 ]; then
     RED=$(printf '\033[31m');   GREEN=$(printf '\033[32m')
@@ -50,6 +56,197 @@ validate_source_set() {
     echo "$1" | grep -qE '^inet [a-zA-Z_][a-zA-Z0-9_]* [a-zA-Z_][a-zA-Z0-9_]*$'
 }
 
+# ─── i18n: движок ───────────────────────────────────────
+
+UI_LANG="en"
+if [ -f "$LANG_FILE" ]; then
+    UI_LANG=$(head -n 1 "$LANG_FILE" 2>/dev/null | tr -d ' \t\r\n')
+fi
+case "$UI_LANG" in
+    en|ru|zh) ;;
+    *) UI_LANG="en" ;;
+esac
+
+# t KEY      — строка по ключу (fallback: en)
+# tf KEY ... — строка с printf-подстановкой (%s)
+t() {
+    eval "printf '%s' \"\${T_$1_${UI_LANG}:-\${T_$1_en}}\""
+}
+tf() {
+    local key="$1"; shift
+    printf "$(t "$key")" "$@"
+}
+lang_name() {
+    case "$1" in
+        ru) printf 'Русский' ;;
+        zh) printf '中文' ;;
+        *)  printf 'English' ;;
+    esac
+}
+
+# ─── i18n: строки ───────────────────────────────────────
+
+# ── общие ──
+T_press_enter_en="Press Enter...";            T_press_enter_ru="Enter...";             T_press_enter_zh="按回车继续..."
+T_invalid_format_en="Invalid format";         T_invalid_format_ru="Неверный формат";   T_invalid_format_zh="格式错误"
+T_no_changes_en="No changes";                 T_no_changes_ru="Без изменений";         T_no_changes_zh="无更改"
+T_back_en="Back";                             T_back_ru="Назад";                       T_back_zh="返回"
+T_choice_prompt_en="Select [0-%s]: ";         T_choice_prompt_ru="Выбор [0-%s]: ";     T_choice_prompt_zh="请选择 [0-%s]： "
+T_choice12_prompt_en="Select [1/2]: ";        T_choice12_prompt_ru="Выбор [1/2]: ";    T_choice12_prompt_zh="请选择 [1/2]： "
+T_current_fmt_en="(current: %s)";             T_current_fmt_ru="(сейчас: %s)";         T_current_fmt_zh="（当前：%s）"
+T_bool_on_en="1) On  (1)";                    T_bool_on_ru="1) Вкл (1)";               T_bool_on_zh="1) 开  (1)"
+T_bool_off_en="2) Off (0)";                   T_bool_off_ru="2) Выкл (0)";             T_bool_off_zh="2) 关  (0)"
+T_keep_fmt_en="Keeping %s";                   T_keep_fmt_ru="Оставляем %s";            T_keep_fmt_zh="保持 %s"
+T_set_ok_en="✓ %s = %s"                       # одинаково для всех языков
+T_set_ok_q_en="✓ %s = '%s'"                   # одинаково для всех языков
+T_ph_empty_en="<empty>";                      T_ph_empty_ru="<пусто>";                 T_ph_empty_zh="<空>"
+T_ph_auto_en="<auto>";                        T_ph_auto_ru="<авто>";                   T_ph_auto_zh="<自动>"
+T_ph_notset_en="<not set>";                   T_ph_notset_ru="<не задано>";            T_ph_notset_zh="<未设置>"
+
+# ── set_string ──
+T_new_value_prompt_en="New value (Enter — keep current): "; T_new_value_prompt_ru="Новое значение (Enter — оставить): "; T_new_value_prompt_zh="新值（回车 = 保持不变）： "
+
+# ── manage_list ──
+T_list_current_fmt_en="Current %s:";          T_list_current_fmt_ru="Текущий список %s:";  T_list_current_fmt_zh="当前%s："
+T_ml_add_en="1) Add";                         T_ml_add_ru="1) Добавить";                T_ml_add_zh="1) 添加"
+T_ml_del_en="2) Remove by number";            T_ml_del_ru="2) Удалить по номеру";       T_ml_del_zh="2) 按编号删除"
+T_ml_clear_en="3) Clear";                     T_ml_clear_ru="3) Очистить";              T_ml_clear_zh="3) 清空"
+T_ml_action_en="Action: ";                    T_ml_action_ru="Действие: ";              T_ml_action_zh="操作： "
+T_ml_value_en="Value: ";                      T_ml_value_ru="Значение: ";               T_ml_value_zh="值： "
+T_ml_added_en="✓ Added: %s";                  T_ml_added_ru="✓ Добавлено: %s";          T_ml_added_zh="✓ 已添加：%s"
+T_ml_list_empty_en="List is empty";           T_ml_list_empty_ru="Список пуст";         T_ml_list_empty_zh="列表为空"
+T_ml_number_en="Number: ";                    T_ml_number_ru="Номер: ";                 T_ml_number_zh="编号： "
+T_ml_bad_number_en="Invalid number";          T_ml_bad_number_ru="Неверный номер";      T_ml_bad_number_zh="编号无效"
+T_ml_range_en="Allowed: 1-%s";                T_ml_range_ru="Допустимо 1-%s";           T_ml_range_zh="允许范围：1-%s"
+T_ml_removed_en="✓ Removed #%s: %s";          T_ml_removed_ru="✓ Удалён #%s: %s";       T_ml_removed_zh="✓ 已删除 #%s：%s"
+T_ml_cleared_en="✓ List cleared";             T_ml_cleared_ru="✓ Список очищен";        T_ml_cleared_zh="✓ 列表已清空"
+
+# типы списков (подставляются в list_current_fmt)
+T_lt_marks_en="allowed marks";                T_lt_marks_ru="маркеров";                 T_lt_marks_zh="允许标记"
+T_lt_ifaces_en="allowed interfaces";          T_lt_ifaces_ru="интерфейсов";             T_lt_ifaces_zh="允许接口"
+T_lt_static_vps_en="static VPS addresses";    T_lt_static_vps_ru="статических VPS";     T_lt_static_vps_zh="静态 VPS"
+T_lt_ntp_en="NTP servers";                    T_lt_ntp_ru="NTP серверов";               T_lt_ntp_zh="NTP 服务器"
+T_lt_doh_en="DoH servers";                    T_lt_doh_ru="DoH серверов";               T_lt_doh_zh="DoH 服务器"
+T_lt_arp_gw_en="ARP gateways (IP)";           T_lt_arp_gw_ru="ARP шлюзов (IP)";         T_lt_arp_gw_zh="ARP 网关（IP）"
+T_lt_arp_mac_en="gateway MACs";               T_lt_arp_mac_ru="MAC шлюзов";             T_lt_arp_mac_zh="网关 MAC 地址"
+
+# ── артефакт ──
+T_artifact_title_en="=== Artifact identification ==="; T_artifact_title_ru="=== Идентификация артефакта ==="; T_artifact_title_zh="=== 二进制文件标识 ==="
+T_ksd_not_found_en="%s not found";            T_ksd_not_found_ru="%s не найден";        T_ksd_not_found_zh="未找到 %s"
+T_sha_label_en="SHA-256 (%s):"                # одинаково для всех языков
+T_size_fmt_en="Size: %s bytes";               T_size_fmt_ru="Размер: %s байт";          T_size_fmt_zh="大小：%s 字节"
+T_mtime_fmt_en="Modified: %s";                T_mtime_fmt_ru="Изменён: %s";             T_mtime_fmt_zh="修改时间：%s"
+T_version_label_en="ksd version:";            T_version_label_ru="Версия ksd:";         T_version_label_zh="ksd 版本："
+
+# ── show_config ──
+T_config_title_en="=== ksd configuration ==="; T_config_title_ru="=== Конфигурация ksd ==="; T_config_title_zh="=== ksd 配置 ==="
+T_sec_basic_en="Main:";                       T_sec_basic_ru="Основные:";               T_sec_basic_zh="基本："
+T_sec_network_en="Network:";                  T_sec_network_ru="Сеть:";                 T_sec_network_zh="网络："
+T_sec_timing_en="Timing / failsafe:";         T_sec_timing_ru="Тайминги / предохранитель:"; T_sec_timing_zh="定时 / 保险机制："
+T_sec_dns_en="DNS / DoH:";                                                              T_sec_dns_zh="DNS / DoH："
+T_sec_arp_en="ARP protection:";               T_sec_arp_ru="ARP защита:";               T_sec_arp_zh="ARP 防护："
+T_sec_logs_en="Logs:";                        T_sec_logs_ru="Логи:";                    T_sec_logs_zh="日志："
+T_sec_lists_en="Lists:";                      T_sec_lists_ru="Списки:";                 T_sec_lists_zh="列表："
+T_sec_artifact_en="Artifact:";                T_sec_artifact_ru="Артефакт:";            T_sec_artifact_zh="二进制文件："
+T_doh_label_en="DoH servers";                 T_doh_label_ru="DoH серверы";             T_doh_label_zh="DoH 服务器"
+T_uci_count_en="Total UCI options: %s";       T_uci_count_ru="Всего опций в UCI: %s";   T_uci_count_zh="UCI 选项总数：%s"
+
+# ── вопросы для boolean ──
+T_q_strict_en="strict_mode (fail-closed)?";   T_q_strict_ru="strict_mode?";             T_q_strict_zh="strict_mode（严格模式）？"
+T_q_dns_block_en="DNS blocking?";             T_q_dns_block_ru="DNS блокировка?";       T_q_dns_block_zh="DNS 封锁？"
+T_q_doh_block_en="DoH blocking?";             T_q_doh_block_ru="DoH блокировка?";       T_q_doh_block_zh="DoH 封锁？"
+T_q_doq_block_en="DoQ blocking?";             T_q_doq_block_ru="DoQ блокировка?";       T_q_doq_block_zh="DoQ 封锁？"
+T_q_quic_block_en="QUIC (UDP/443) blocking?"; T_q_quic_block_ru="QUIC (UDP/443) блокировка?"; T_q_quic_block_zh="QUIC（UDP/443）封锁？"
+T_q_ipv6_block_en="IPv6 blocking?";           T_q_ipv6_block_ru="IPv6 блокировка?";     T_q_ipv6_block_zh="IPv6 封锁？"
+T_q_forward_en="forward_protect?";                                                      T_q_forward_zh="forward_protect？"
+T_q_mss_clamp_en="MSS clamp?";                                                          T_q_mss_clamp_zh="MSS clamp（MSS 钳制）？"
+T_q_ttl_set_en="TTL set (bypass ISP TTL-based detection)?"; T_q_ttl_set_ru="TTL set (для обхода TTL-based детекта провайдера)?"; T_q_ttl_set_zh="TTL 设置（绕过运营商基于 TTL 的检测）？"
+T_q_force_stop_en="force_stop (remove nft objects on stop)?"; T_q_force_stop_ru="force_stop (при stop удалять nft-объекты)?"; T_q_force_stop_zh="force_stop（stop 时删除 nft 对象）？"
+T_q_flush_narrow_en="Flush conntrack only when the set narrows?"; T_q_flush_narrow_ru="Чистить conntrack только при сужении set?"; T_q_flush_narrow_zh="仅在集合缩小时清空 conntrack？"
+T_q_merge_static_en="Merge static_vps into the main set?"; T_q_merge_static_ru="Добавлять static_vps в общий set?"; T_q_merge_static_zh="将 static_vps 并入主集合？"
+T_q_arp_en="ARP protection?";                 T_q_arp_ru="ARP защита?";                 T_q_arp_zh="ARP 防护？"
+T_q_log_susp_en="Log suspicious activity?";   T_q_log_susp_ru="Логировать подозрительную активность?"; T_q_log_susp_zh="记录可疑活动？"
+T_q_log_drops_en="Log terminal rule drops?";  T_q_log_drops_ru="Логировать дропы терминальных правил?"; T_q_log_drops_zh="记录终结规则的丢包？"
+
+# ── подсказки для set_string ──
+T_p_wan_iface_en="WAN interface";             T_p_wan_iface_ru="WAN интерфейс";         T_p_wan_iface_zh="WAN 接口"
+T_p_wan_dev_en="WAN device (empty = auto)";   T_p_wan_dev_ru="WAN устройство (пусто = авто)"; T_p_wan_dev_zh="WAN 设备（空 = 自动）"
+T_p_table_en="nftables table name";           T_p_table_ru="Имя таблицы nftables";      T_p_table_zh="nftables 表名"
+T_p_set_en="VPS set name";                    T_p_set_ru="Имя set VPS";                 T_p_set_zh="VPS 集合名称"
+T_p_source_set_en="VPS source ('inet TABLE SET')"; T_p_source_set_ru="Источник VPS ('inet TABLE SET')"; T_p_source_set_zh="VPS 来源（'inet TABLE SET'）"
+T_p_filter_prio_en="Output filter priority";  T_p_filter_prio_ru="Приоритет output";    T_p_filter_prio_zh="output 优先级"
+T_p_forward_prio_en="Forward filter priority"; T_p_forward_prio_ru="Приоритет forward"; T_p_forward_prio_zh="forward 优先级"
+T_p_mangle_prio_en="Mangle priority";         T_p_mangle_prio_ru="Приоритет mangle";    T_p_mangle_prio_zh="mangle 优先级"
+T_p_ntp_en="NTP servers (space-separated IPs)"; T_p_ntp_ru="NTP серверы (IP через пробел)"; T_p_ntp_zh="NTP 服务器（IP，用空格分隔）"
+T_p_poll_en="Poll interval (sec)";            T_p_poll_ru="Poll интервал (сек)";        T_p_poll_zh="轮询间隔（秒）"
+T_p_verify_en="Verify interval (sec)";        T_p_verify_ru="Verify интервал (сек)";    T_p_verify_zh="校验间隔（秒）"
+T_p_grace_en="Empty-source debounce (sec)";   T_p_grace_ru="Debounce пустого источника (сек)"; T_p_grace_zh="空来源宽限时间（秒）"
+T_p_fullfail_en="Max consecutive full-fails"; T_p_fullfail_ru="Максимум подряд full-fail"; T_p_fullfail_zh="连续 full-fail 上限"
+T_p_maxvps_en="Max VPS elements";             T_p_maxvps_ru="Максимум элементов VPS";   T_p_maxvps_zh="VPS 元素上限"
+T_p_arp_iface_en="ARP interface";             T_p_arp_iface_ru="ARP интерфейс";         T_p_arp_iface_zh="ARP 接口"
+T_p_log_file_en="Log file path (empty = syslog)"; T_p_log_file_ru="Путь к лог-файлу (пусто = syslog)"; T_p_log_file_zh="日志文件路径（空 = syslog）"
+T_p_log_max_kb_en="Max size (KB)";            T_p_log_max_kb_ru="Максимум (KB)";        T_p_log_max_kb_zh="上限（KB）"
+
+# ── заголовки меню ──
+T_menu_title_en="=== ksd configurator ===";   T_menu_title_ru="=== Конфигуратор ksd ==="; T_menu_title_zh="=== ksd 配置器 ==="
+T_basic_title_en="=== Basic parameters ===";  T_basic_title_ru="=== Основные параметры ==="; T_basic_title_zh="=== 基本参数 ==="
+T_network_title_en="=== Network settings ==="; T_network_title_ru="=== Сетевые настройки ==="; T_network_title_zh="=== 网络设置 ==="
+T_timing_title_en="=== Timing and failsafe ==="; T_timing_title_ru="=== Тайминги и предохранитель ==="; T_timing_title_zh="=== 定时与保险机制 ==="
+T_dns_title_en="=== DNS / DoH / DoQ / QUIC ==="   # одинаково для всех языков
+T_arp_title_en="=== ARP protection ===";      T_arp_title_ru="=== ARP защита ===";      T_arp_title_zh="=== ARP 防护 ==="
+T_logs_title_en="=== Logs ===";               T_logs_title_ru="=== Логи ===";           T_logs_title_zh="=== 日志 ==="
+T_lists_title_en="=== List management ===";   T_lists_title_ru="=== Управление списками ==="; T_lists_title_zh="=== 列表管理 ==="
+T_ops_title_en="=== ksd operations ===";      T_ops_title_ru="=== Операции ksd ===";    T_ops_title_zh="=== ksd 操作 ==="
+
+# ── меню DNS ──
+T_dns_manage_en="1) Manage DoH servers";      T_dns_manage_ru="1) Управлять DoH-серверами"; T_dns_manage_zh="1) 管理 DoH 服务器"
+T_dns_block_en="2) DNS block (53/853/8853)";  T_dns_block_ru="2) DNS блок (53/853/8853)"; T_dns_block_zh="2) DNS 封锁（53/853/8853）"
+T_doh_block_en="3) DoH block (443)";          T_doh_block_ru="3) DoH блок (443)";       T_doh_block_zh="3) DoH 封锁（443）"
+T_doq_block_en="4) DoQ block (784)";          T_doq_block_ru="4) DoQ блок (784)";       T_doq_block_zh="4) DoQ 封锁（784）"
+T_quic_block_en="5) QUIC block (UDP/443)";    T_quic_block_ru="5) QUIC блок (UDP/443)"; T_quic_block_zh="5) QUIC 封锁（UDP/443）"
+
+# ── меню ARP ──
+T_arp_toggle_en="1) Enable/disable ARP protection"; T_arp_toggle_ru="1) Вкл/выкл ARP защиту"; T_arp_toggle_zh="1) 开启/关闭 ARP 防护"
+T_arp_set_iface_en="2) Set arp_interface";    T_arp_set_iface_ru="2) Задать arp_interface"; T_arp_set_iface_zh="2) 设置 arp_interface"
+T_arp_gw_en="3) Manage arp_gateway (IP)";     T_arp_gw_ru="3) Управлять arp_gateway (IP)"; T_arp_gw_zh="3) 管理 arp_gateway（IP）"
+T_arp_mac_en="4) Manage arp_gateway_mac";     T_arp_mac_ru="4) Управлять arp_gateway_mac"; T_arp_mac_zh="4) 管理 arp_gateway_mac"
+
+# ── операции ──
+T_ops_version_en="7) Show version and hash";  T_ops_version_ru="7) Показать версию и хеш"; T_ops_version_zh="7) 查看版本与哈希"
+T_ops_logs_en="8) Show ksd logs";             T_ops_logs_ru="8) Показать логи ksd";      T_ops_logs_zh="8) 查看 ksd 日志"
+T_ops_restart_en="9) restart / reload";                                                 T_ops_restart_zh="9) 重启 / 重新加载"
+T_ops_removeall_en="10) remove-all (remove all ksd nft objects)"; T_ops_removeall_ru="10) remove-all (снос всех nft-объектов ksd)"; T_ops_removeall_zh="10) remove-all（移除 ksd 的全部 nft 对象）"
+T_ops_warn_rm_en="Warning: this removes ALL ksd nft tables."; T_ops_warn_rm_ru="Внимание: удалит все nft-таблицы ksd."; T_ops_warn_rm_zh="警告：将删除 ksd 的全部 nft 表。"
+T_confirm_en="Continue? [y/N]: ";             T_confirm_ru="Продолжить? [y/N]: ";       T_confirm_zh="继续？[y/N]： "
+T_cancelled_en="Cancelled";                   T_cancelled_ru="Отменено";               T_cancelled_zh="已取消"
+T_restart_ok_en="✓ restart done";             T_restart_ok_ru="✓ restart выполнен";     T_restart_ok_zh="✓ restart 已完成"
+
+# ── применение ──
+T_apply_title_en="Applying config and restarting ksd"; T_apply_title_ru="Применение конфига и перезапуск ksd"; T_apply_title_zh="应用配置并重启 ksd"
+T_restarting_en="Restarting...";              T_restarting_ru="Перезапуск...";          T_restarting_zh="正在重启..."
+
+# ── главное меню ──
+T_mm_show_en="1) Show current configuration"; T_mm_show_ru="1) Показать текущую конфигурацию"; T_mm_show_zh="1) 查看当前配置"
+T_mm_basic_en="2) Basic parameters";          T_mm_basic_ru="2) Основные параметры";    T_mm_basic_zh="2) 基本参数"
+T_mm_network_en="3) Network settings";        T_mm_network_ru="3) Сетевые настройки";   T_mm_network_zh="3) 网络设置"
+T_mm_timing_en="4) Timing / failsafe";        T_mm_timing_ru="4) Тайминги / предохранитель"; T_mm_timing_zh="4) 定时 / 保险机制"
+T_mm_dns_en="5) DNS / DoH / DoQ / QUIC"       # одинаково для всех языков
+T_mm_arp_en="6) ARP protection";              T_mm_arp_ru="6) ARP защита";              T_mm_arp_zh="6) ARP 防护"
+T_mm_logs_en="7) Logs";                       T_mm_logs_ru="7) Логи";                   T_mm_logs_zh="7) 日志"
+T_mm_lists_en="8) List management";           T_mm_lists_ru="8) Управление списками";  T_mm_lists_zh="8) 列表管理"
+T_mm_ops_en="9) ksd operations (status/self-test/dry-run/install)"; T_mm_ops_ru="9) Операции ksd (status/self-test/dry-run/install)"; T_mm_ops_zh="9) ksd 操作（status/self-test/dry-run/install）"
+T_mm_apply_en="10) Apply and restart";        T_mm_apply_ru="10) Применить и перезапустить"; T_mm_apply_zh="10) 应用并重启"
+T_mm_showuci_en="11) Show all UCI options";   T_mm_showuci_ru="11) Показать все UCI-опции"; T_mm_showuci_zh="11) 查看全部 UCI 选项"
+T_mm_artifact_en="12) Show artifact (hash/version)"; T_mm_artifact_ru="12) Показать артефакт (хеш/версия)"; T_mm_artifact_zh="12) 查看二进制文件（哈希/版本）"
+T_mm_lang_en="13) Language / Язык / 语言"      # одинаково для всех языков
+T_mm_exit_en="0) Exit";                       T_mm_exit_ru="0) Выход";                 T_mm_exit_zh="0) 退出"
+T_exit_msg_en="Exiting.";                     T_exit_msg_ru="Выход.";                  T_exit_msg_zh="退出。"
+
+# ── выбор языка ──
+T_lang_title_en="=== Language / Язык / 语言 ==="  # одинаково для всех языков
+T_lang_saved_en="✓ Language: %s";             T_lang_saved_ru="✓ Язык: %s";            T_lang_saved_zh="✓ 语言：%s"
+T_lang_save_failed_en="✗ Could not save language preference"; T_lang_save_failed_ru="✗ Не удалось сохранить выбор языка"; T_lang_save_failed_zh="✗ 无法保存语言设置"
+
 # ─── Артефакт ───────────────────────────────────────────
 
 get_artifact_hash() {
@@ -62,22 +259,22 @@ get_artifact_hash() {
 
 show_artifact_info() {
     clear
-    echo "${BOLD}=== Идентификация артефакта ===${RESET}"
+    echo "${BOLD}$(t artifact_title)${RESET}"
     echo ""
     if [ ! -f "$KSD" ]; then
-        echo "${RED}✗ $KSD не найден${RESET}"
-        read -r -p "Enter..." dummy; return
+        echo "${RED}✗ $(tf ksd_not_found "$KSD")${RESET}"
+        read -r -p "$(t press_enter)" dummy; return
     fi
-    echo "${CYAN}SHA-256 ($KSD):${RESET}"
+    echo "${CYAN}$(tf sha_label "$KSD")${RESET}"
     echo "  $(get_artifact_hash)"
     echo ""
-    echo "${DIM}Размер: $(wc -c < "$KSD" | tr -d ' ') байт${RESET}"
-    echo "${DIM}Изменён: $(ls -l "$KSD" | awk '{print $6, $7, $8}')${RESET}"
+    echo "${DIM}$(tf size_fmt "$(wc -c < "$KSD" | tr -d ' ')")${RESET}"
+    echo "${DIM}$(tf mtime_fmt "$(ls -l "$KSD" | awk '{print $6, $7, $8}')")${RESET}"
     echo ""
-    echo "${CYAN}Версия ksd:${RESET}"
+    echo "${CYAN}$(t version_label)${RESET}"
     $KSD version 2>/dev/null | sed 's/^/  /'
     echo ""
-    read -r -p "Enter..." dummy
+    read -r -p "$(t press_enter)" dummy
 }
 
 # ─── Загрузка конфига ───────────────────────────────────
@@ -143,9 +340,9 @@ load_config() {
 show_config() {
     load_config
     clear
-    echo "${BOLD}=== Конфигурация ksd ===${RESET}"
+    echo "${BOLD}$(t config_title)${RESET}"
     echo ""
-    echo "${GREEN}Основные:${RESET}"
+    echo "${GREEN}$(t sec_basic)${RESET}"
     echo "  strict_mode              : ${STRICT_MODE}"
     echo "  dns_block_enabled        : ${DNS_BLOCK}"
     echo "  doh_block_enabled        : ${DOH_BLOCK}"
@@ -157,18 +354,18 @@ show_config() {
     echo "  ttl_set_enabled          : ${TTL_SET}"
     echo "  force_stop               : ${FORCE_STOP}"
     echo ""
-    echo "${YELLOW}Сеть:${RESET}"
+    echo "${YELLOW}$(t sec_network)${RESET}"
     echo "  wan_interface            : ${WAN_IF}"
-    echo "  wan_device               : ${WAN_DEV:-<авто>}"
+    echo "  wan_device               : ${WAN_DEV:-$(t ph_auto)}"
     echo "  table_name               : ${TABLE_NAME}"
     echo "  set_name                 : ${SET_NAME}"
     echo "  source_set               : ${SOURCE_SET}"
     echo "  filter_priority          : ${FILTER_PRIO}"
     echo "  forward_filter_prio      : ${FORWARD_FILTER_PRIO}"
     echo "  mangle_priority          : ${MANGLE_PRIO}"
-    echo "  ntp_servers              : ${NTP_SERVERS:-<не задано>}"
+    echo "  ntp_servers              : ${NTP_SERVERS:-$(t ph_notset)}"
     echo ""
-    echo "${BLUE}Тайминги / предохранитель:${RESET}"
+    echo "${BLUE}$(t sec_timing)${RESET}"
     echo "  poll_interval_sec        : ${POLL_INTERVAL}"
     echo "  verify_interval_sec      : ${VERIFY_INTERVAL}"
     echo "  empty_source_grace_sec   : ${EMPTY_GRACE}"
@@ -177,74 +374,74 @@ show_config() {
     echo "  flush_on_narrow_only     : ${FLUSH_NARROW}"
     echo "  merge_static_vps         : ${MERGE_STATIC}"
     echo ""
-    echo "${MAGENTA}DNS / DoH:${RESET}"
-    echo "  DoH servers              : ${DOH_SERVERS:-<пусто>}"
+    echo "${MAGENTA}$(t sec_dns)${RESET}"
+    echo "  $(t doh_label)           : ${DOH_SERVERS:-$(t ph_empty)}"
     echo ""
-    echo "${RED}ARP защита:${RESET}"
+    echo "${RED}$(t sec_arp)${RESET}"
     echo "  arp_protection           : ${ARP_PROT}"
-    echo "  arp_interface            : ${ARP_IFACE:-<авто>}"
-    echo "  arp_gateways             : ${ARP_GATEWAYS:-<не задано>}"
-    echo "  arp_gateway_mac          : ${ARP_GATEWAY_MACS:-<не задано>}"
+    echo "  arp_interface            : ${ARP_IFACE:-$(t ph_auto)}"
+    echo "  arp_gateways             : ${ARP_GATEWAYS:-$(t ph_notset)}"
+    echo "  arp_gateway_mac          : ${ARP_GATEWAY_MACS:-$(t ph_notset)}"
     echo ""
-    echo "${YELLOW}Логи:${RESET}"
+    echo "${YELLOW}$(t sec_logs)${RESET}"
     echo "  log_suspicious           : ${LOG_SUSP}"
     echo "  log_drops                : ${LOG_DROPS}"
-    echo "  log_file                 : ${LOG_FILE:-<не задан>}"
+    echo "  log_file                 : ${LOG_FILE:-$(t ph_notset)}"
     echo "  log_max_kb               : ${LOG_MAX_KB}"
     echo ""
-    echo "${BLUE}Списки:${RESET}"
+    echo "${BLUE}$(t sec_lists)${RESET}"
     echo "  allowed_marks            : ${ALLOWED_MARKS}"
     echo "  allowed_interfaces       : ${ALLOWED_IFACES}"
-    echo "  static_vps               : ${STATIC_VPS:-<пусто>}"
+    echo "  static_vps               : ${STATIC_VPS:-$(t ph_empty)}"
     echo ""
-    echo "${BOLD}Артефакт:${RESET} $(get_artifact_hash | cut -c1-32)..."
-    echo "${DIM}Всего опций в UCI: $(uci -q show killswitch | wc -l)${RESET}"
+    echo "${BOLD}$(t sec_artifact)${RESET} $(get_artifact_hash | cut -c1-32)..."
+    echo "${DIM}$(tf uci_count "$(uci -q show killswitch | wc -l)")${RESET}"
 }
 
 # ─── Изменение параметров ───────────────────────────────
 
 set_boolean() {
-    local var_name="$1" current="$2" prompt="$3" new_val
-    echo "${prompt} (сейчас: ${current})"
-    echo "  1) Вкл (1)"
-    echo "  2) Выкл (0)"
-    read -r -p "Выбор [1/2]: " choice
+    local var_name="$1" current="$2" qkey="$3" new_val choice
+    echo "$(t "$qkey") $(tf current_fmt "$current")"
+    echo "  $(t bool_on)"
+    echo "  $(t bool_off)"
+    read -r -p "$(t choice12_prompt)" choice
     case "$choice" in
         1) new_val="1" ;;
         2) new_val="0" ;;
-        *) echo "Оставляем ${current}"; return ;;
+        *) echo "$(tf keep_fmt "$current")"; return ;;
     esac
     if [ "$new_val" != "$current" ]; then
         uci set killswitch.main.${var_name}="$new_val"
-        echo "${GREEN}✓ ${var_name} = ${new_val}${RESET}"
+        echo "${GREEN}$(tf set_ok "$var_name" "$new_val")${RESET}"
     else
-        echo "Без изменений"
+        echo "$(t no_changes)"
     fi
 }
 
 set_string() {
-    local var_name="$1" current="$2" prompt="$3" validator="$4" new_val
-    echo "${prompt} (сейчас: ${current:-<пусто>})"
+    local var_name="$1" current="$2" pkey="$3" validator="$4" new_val
+    echo "$(t "$pkey") $(tf current_fmt "${current:-$(t ph_empty)}")"
     while true; do
-        read -r -p "Новое значение (Enter — оставить): " new_val
+        read -r -p "$(t new_value_prompt)" new_val
         [ -z "$new_val" ] && return
         if [ -n "$validator" ]; then
             if $validator "$new_val"; then break
-            else echo "${RED}Неверный формат${RESET}"; fi
+            else echo "${RED}$(t invalid_format)${RESET}"; fi
         else
             break
         fi
     done
     if [ "$new_val" != "$current" ]; then
         uci set killswitch.main.${var_name}="$new_val"
-        echo "${GREEN}✓ ${var_name} = '${new_val}'${RESET}"
+        echo "${GREEN}$(tf set_ok_q "$var_name" "$new_val")${RESET}"
     fi
 }
 
 # ─── Управление списками ────────────────────────────────
 
 manage_list() {
-    local section="$1" option="$2" type_desc="$3" validator="$4"
+    local section="$1" option="$2" ltkey="$3" validator="$4"
     local current_list
 
     if [ "$section" = "main" ]; then
@@ -253,46 +450,46 @@ manage_list() {
         current_list=$(uci -q show killswitch.doh.${option} | cut -d= -f2 | tr -d "'")
     fi
 
-    echo "${BOLD}Текущий список ${type_desc}:${RESET}"
+    echo "${BOLD}$(tf list_current_fmt "$(t "$ltkey")")${RESET}"
     if [ -n "$current_list" ]; then
         echo "$current_list" | while read -r item; do echo "  - $item"; done
     else
-        echo "  <пусто>"
+        echo "  $(t ph_empty)"
     fi
     echo ""
-    echo "  1) Добавить"
-    echo "  2) Удалить по номеру"
-    echo "  3) Очистить"
-    echo "  0) Назад"
-    read -r -p "Действие: " action
+    echo "  $(t ml_add)"
+    echo "  $(t ml_del)"
+    echo "  $(t ml_clear)"
+    echo "  0) $(t back)"
+    read -r -p "$(t ml_action)" action
 
     case "$action" in
         1)
-            read -r -p "Значение: " new_item
+            read -r -p "$(t ml_value)" new_item
             [ -z "$new_item" ] && return
             if [ -n "$validator" ] && ! $validator "$new_item"; then
-                echo "${RED}Неверный формат${RESET}"; return
+                echo "${RED}$(t invalid_format)${RESET}"; return
             fi
             uci add_list killswitch.${section}.${option}="$new_item"
-            echo "${GREEN}✓ Добавлено: ${new_item}${RESET}"
+            echo "${GREEN}$(tf ml_added "$new_item")${RESET}"
             ;;
         2)
-            [ -z "$current_list" ] && { echo "Список пуст"; return; }
+            [ -z "$current_list" ] && { echo "$(t ml_list_empty)"; return; }
             i=1
             echo "$current_list" | while read -r item; do
                 echo "  ${i}) ${item}"; i=$((i+1))
             done
-            read -r -p "Номер: " idx
-            case "$idx" in ''|*[!0-9]*) echo "Неверный номер"; return ;; esac
+            read -r -p "$(t ml_number)" idx
+            case "$idx" in ''|*[!0-9]*) echo "$(t ml_bad_number)"; return ;; esac
             local total=$(echo "$current_list" | grep -c .)
-            [ "$idx" -lt 1 ] || [ "$idx" -gt "$total" ] && { echo "Допустимо 1-${total}"; return; }
+            [ "$idx" -lt 1 ] || [ "$idx" -gt "$total" ] && { echo "$(tf ml_range "$total")"; return; }
             local item=$(echo "$current_list" | sed -n "${idx}p")
             uci del_list killswitch.${section}.${option}="$item"
-            echo "${GREEN}✓ Удалён #${idx}: ${item}${RESET}"
+            echo "${GREEN}$(tf ml_removed "$idx" "$item")${RESET}"
             ;;
         3)
             uci -q delete killswitch.${section}.${option}
-            echo "${GREEN}✓ Список очищен${RESET}"
+            echo "${GREEN}$(t ml_cleared)${RESET}"
             ;;
         0) return ;;
     esac
@@ -304,7 +501,7 @@ menu_basic() {
     while true; do
         load_config
         clear
-        echo "${BOLD}=== Основные параметры ===${RESET}"
+        echo "${BOLD}$(t basic_title)${RESET}"
         echo "  1) strict_mode          : ${STRICT_MODE}"
         echo "  2) dns_block_enabled    : ${DNS_BLOCK}"
         echo "  3) doh_block_enabled    : ${DOH_BLOCK}"
@@ -315,19 +512,19 @@ menu_basic() {
         echo "  8) mss_clamp_enabled    : ${MSS_CLAMP}"
         echo "  9) ttl_set_enabled      : ${TTL_SET}"
         echo " 10) force_stop           : ${FORCE_STOP}"
-        echo "  0) Назад"
-        read -r -p "Выбор [0-10]: " opt
+        echo "  0) $(t back)"
+        read -r -p "$(tf choice_prompt 10)" opt
         case "$opt" in
-            1) set_boolean strict_mode "$STRICT_MODE" "strict_mode?" ;;
-            2) set_boolean dns_block_enabled "$DNS_BLOCK" "DNS блокировка?" ;;
-            3) set_boolean doh_block_enabled "$DOH_BLOCK" "DoH блокировка?" ;;
-            4) set_boolean doq_block_enabled "$DOQ_BLOCK" "DoQ блокировка?" ;;
-            5) set_boolean quic_block_enabled "$QUIC_BLOCK" "QUIC (UDP/443) блокировка?" ;;
-            6) set_boolean ipv6_block_enabled "$IPV6_BLOCK" "IPv6 блокировка?" ;;
-            7) set_boolean forward_protect "$FORWARD_PROTECT" "forward_protect?" ;;
-            8) set_boolean mss_clamp_enabled "$MSS_CLAMP" "MSS clamp?" ;;
-            9) set_boolean ttl_set_enabled "$TTL_SET" "TTL set (для обхода TTL-based детекта провайдера)?" ;;
-            10) set_boolean force_stop "$FORCE_STOP" "force_stop (при stop удалять nft-объекты)?" ;;
+            1) set_boolean strict_mode "$STRICT_MODE" q_strict ;;
+            2) set_boolean dns_block_enabled "$DNS_BLOCK" q_dns_block ;;
+            3) set_boolean doh_block_enabled "$DOH_BLOCK" q_doh_block ;;
+            4) set_boolean doq_block_enabled "$DOQ_BLOCK" q_doq_block ;;
+            5) set_boolean quic_block_enabled "$QUIC_BLOCK" q_quic_block ;;
+            6) set_boolean ipv6_block_enabled "$IPV6_BLOCK" q_ipv6_block ;;
+            7) set_boolean forward_protect "$FORWARD_PROTECT" q_forward ;;
+            8) set_boolean mss_clamp_enabled "$MSS_CLAMP" q_mss_clamp ;;
+            9) set_boolean ttl_set_enabled "$TTL_SET" q_ttl_set ;;
+            10) set_boolean force_stop "$FORCE_STOP" q_force_stop ;;
             0) break ;;
         esac
         uci commit killswitch
@@ -338,28 +535,28 @@ menu_network() {
     while true; do
         load_config
         clear
-        echo "${BOLD}=== Сетевые настройки ===${RESET}"
+        echo "${BOLD}$(t network_title)${RESET}"
         echo "  1) wan_interface       : ${WAN_IF}"
-        echo "  2) wan_device          : ${WAN_DEV:-<авто>}"
+        echo "  2) wan_device          : ${WAN_DEV:-$(t ph_auto)}"
         echo "  3) table_name          : ${TABLE_NAME}"
         echo "  4) set_name            : ${SET_NAME}"
         echo "  5) source_set          : ${SOURCE_SET}"
         echo "  6) filter_priority     : ${FILTER_PRIO}"
         echo "  7) forward_filter_prio : ${FORWARD_FILTER_PRIO}"
         echo "  8) mangle_priority     : ${MANGLE_PRIO}"
-        echo "  9) ntp_servers         : ${NTP_SERVERS:-<не задано>}"
-        echo "  0) Назад"
-        read -r -p "Выбор [0-9]: " opt
+        echo "  9) ntp_servers         : ${NTP_SERVERS:-$(t ph_notset)}"
+        echo "  0) $(t back)"
+        read -r -p "$(tf choice_prompt 9)" opt
         case "$opt" in
-            1) set_string wan_interface "$WAN_IF" "WAN интерфейс" ;;
-            2) set_string wan_device "$WAN_DEV" "WAN устройство (пусто = авто)" ;;
-            3) set_string table_name "$TABLE_NAME" "Имя таблицы nftables" ;;
-            4) set_string set_name "$SET_NAME" "Имя set VPS" ;;
-            5) set_string source_set "$SOURCE_SET" "Источник VPS ('inet TABLE SET')" validate_source_set ;;
-            6) set_string filter_priority "$FILTER_PRIO" "Приоритет output" validate_priority ;;
-            7) set_string forward_filter_priority "$FORWARD_FILTER_PRIO" "Приоритет forward" validate_priority ;;
-            8) set_string mangle_priority "$MANGLE_PRIO" "Приоритет mangle" validate_priority ;;
-            9) set_string ntp_servers "$NTP_SERVERS" "NTP серверы (IP через пробел)" ;;
+            1) set_string wan_interface "$WAN_IF" p_wan_iface ;;
+            2) set_string wan_device "$WAN_DEV" p_wan_dev ;;
+            3) set_string table_name "$TABLE_NAME" p_table ;;
+            4) set_string set_name "$SET_NAME" p_set ;;
+            5) set_string source_set "$SOURCE_SET" p_source_set validate_source_set ;;
+            6) set_string filter_priority "$FILTER_PRIO" p_filter_prio validate_priority ;;
+            7) set_string forward_filter_priority "$FORWARD_FILTER_PRIO" p_forward_prio validate_priority ;;
+            8) set_string mangle_priority "$MANGLE_PRIO" p_mangle_prio validate_priority ;;
+            9) set_string ntp_servers "$NTP_SERVERS" p_ntp ;;
             0) break ;;
         esac
         uci commit killswitch
@@ -370,7 +567,7 @@ menu_timing() {
     while true; do
         load_config
         clear
-        echo "${BOLD}=== Тайминги и предохранитель ===${RESET}"
+        echo "${BOLD}$(t timing_title)${RESET}"
         echo "  1) poll_interval_sec      : ${POLL_INTERVAL}"
         echo "  2) verify_interval_sec    : ${VERIFY_INTERVAL}"
         echo "  3) empty_source_grace_sec : ${EMPTY_GRACE}"
@@ -378,16 +575,16 @@ menu_timing() {
         echo "  5) max_vps_elements       : ${MAX_VPS}"
         echo "  6) flush_on_narrow_only   : ${FLUSH_NARROW}"
         echo "  7) merge_static_vps       : ${MERGE_STATIC}"
-        echo "  0) Назад"
-        read -r -p "Выбор [0-7]: " opt
+        echo "  0) $(t back)"
+        read -r -p "$(tf choice_prompt 7)" opt
         case "$opt" in
-            1) set_string poll_interval_sec "$POLL_INTERVAL" "Poll интервал (сек)" validate_positive_int ;;
-            2) set_string verify_interval_sec "$VERIFY_INTERVAL" "Verify интервал (сек)" validate_positive_int ;;
-            3) set_string empty_source_grace_sec "$EMPTY_GRACE" "Debounce пустого источника (сек)" validate_positive_int ;;
-            4) set_string full_fail_max "$FULL_FAIL_MAX" "Максимум подряд full-fail" validate_positive_int ;;
-            5) set_string max_vps_elements "$MAX_VPS" "Максимум элементов VPS" validate_positive_int ;;
-            6) set_boolean flush_on_narrow_only "$FLUSH_NARROW" "Чистить conntrack только при сужении set?" ;;
-            7) set_boolean merge_static_vps "$MERGE_STATIC" "Добавлять static_vps в общий set?" ;;
+            1) set_string poll_interval_sec "$POLL_INTERVAL" p_poll validate_positive_int ;;
+            2) set_string verify_interval_sec "$VERIFY_INTERVAL" p_verify validate_positive_int ;;
+            3) set_string empty_source_grace_sec "$EMPTY_GRACE" p_grace validate_positive_int ;;
+            4) set_string full_fail_max "$FULL_FAIL_MAX" p_fullfail validate_positive_int ;;
+            5) set_string max_vps_elements "$MAX_VPS" p_maxvps validate_positive_int ;;
+            6) set_boolean flush_on_narrow_only "$FLUSH_NARROW" q_flush_narrow ;;
+            7) set_boolean merge_static_vps "$MERGE_STATIC" q_merge_static ;;
             0) break ;;
         esac
         uci commit killswitch
@@ -398,22 +595,22 @@ menu_dns() {
     while true; do
         load_config
         clear
-        echo "${BOLD}=== DNS / DoH / DoQ / QUIC ===${RESET}"
-        echo "  DoH servers: ${DOH_SERVERS:-<пусто>}"
+        echo "${BOLD}$(t dns_title)${RESET}"
+        echo "  $(t doh_label): ${DOH_SERVERS:-$(t ph_empty)}"
         echo ""
-        echo "  1) Управлять DoH-серверами"
-        echo "  2) DNS блок (53/853/8853)"
-        echo "  3) DoH блок (443)"
-        echo "  4) DoQ блок (784)"
-        echo "  5) QUIC блок (UDP/443)"
-        echo "  0) Назад"
-        read -r -p "Выбор [0-5]: " opt
+        echo "  $(t dns_manage)"
+        echo "  $(t dns_block)"
+        echo "  $(t doh_block)"
+        echo "  $(t doq_block)"
+        echo "  $(t quic_block)"
+        echo "  0) $(t back)"
+        read -r -p "$(tf choice_prompt 5)" opt
         case "$opt" in
-            1) manage_list doh server "DoH серверов" validate_ip_plain ;;
-            2) set_boolean dns_block_enabled "$DNS_BLOCK" "DNS блок?" ;;
-            3) set_boolean doh_block_enabled "$DOH_BLOCK" "DoH блок?" ;;
-            4) set_boolean doq_block_enabled "$DOQ_BLOCK" "DoQ блок?" ;;
-            5) set_boolean quic_block_enabled "$QUIC_BLOCK" "QUIC блок?" ;;
+            1) manage_list doh server lt_doh validate_ip_plain ;;
+            2) set_boolean dns_block_enabled "$DNS_BLOCK" q_dns_block ;;
+            3) set_boolean doh_block_enabled "$DOH_BLOCK" q_doh_block ;;
+            4) set_boolean doq_block_enabled "$DOQ_BLOCK" q_doq_block ;;
+            5) set_boolean quic_block_enabled "$QUIC_BLOCK" q_quic_block ;;
             0) break ;;
         esac
         uci commit killswitch
@@ -424,23 +621,23 @@ menu_arp() {
     while true; do
         load_config
         clear
-        echo "${BOLD}=== ARP защита ===${RESET}"
+        echo "${BOLD}$(t arp_title)${RESET}"
         echo "  arp_protection  : ${ARP_PROT}"
-        echo "  arp_interface   : ${ARP_IFACE:-<авто>}"
-        echo "  arp_gateways    : ${ARP_GATEWAYS:-<не задано>}"
-        echo "  arp_gateway_mac : ${ARP_GATEWAY_MACS:-<не задано>}"
+        echo "  arp_interface   : ${ARP_IFACE:-$(t ph_auto)}"
+        echo "  arp_gateways    : ${ARP_GATEWAYS:-$(t ph_notset)}"
+        echo "  arp_gateway_mac : ${ARP_GATEWAY_MACS:-$(t ph_notset)}"
         echo ""
-        echo "  1) Вкл/выкл ARP защиту"
-        echo "  2) Задать arp_interface"
-        echo "  3) Управлять arp_gateway (IP)"
-        echo "  4) Управлять arp_gateway_mac"
-        echo "  0) Назад"
-        read -r -p "Выбор [0-4]: " opt
+        echo "  $(t arp_toggle)"
+        echo "  $(t arp_set_iface)"
+        echo "  $(t arp_gw)"
+        echo "  $(t arp_mac)"
+        echo "  0) $(t back)"
+        read -r -p "$(tf choice_prompt 4)" opt
         case "$opt" in
-            1) set_boolean arp_protection "$ARP_PROT" "ARP защита?" ;;
-            2) set_string arp_interface "$ARP_IFACE" "ARP интерфейс" ;;
-            3) manage_list main arp_gateway "ARP шлюзов (IP)" validate_ip_plain ;;
-            4) manage_list main arp_gateway_mac "MAC шлюзов" validate_mac ;;
+            1) set_boolean arp_protection "$ARP_PROT" q_arp ;;
+            2) set_string arp_interface "$ARP_IFACE" p_arp_iface ;;
+            3) manage_list main arp_gateway lt_arp_gw validate_ip_plain ;;
+            4) manage_list main arp_gateway_mac lt_arp_mac validate_mac ;;
             0) break ;;
         esac
         uci commit killswitch
@@ -451,18 +648,18 @@ menu_logging() {
     while true; do
         load_config
         clear
-        echo "${BOLD}=== Логи ===${RESET}"
+        echo "${BOLD}$(t logs_title)${RESET}"
         echo "  1) log_suspicious : ${LOG_SUSP}"
         echo "  2) log_drops      : ${LOG_DROPS}"
-        echo "  3) log_file       : ${LOG_FILE:-<не задан>}"
+        echo "  3) log_file       : ${LOG_FILE:-$(t ph_notset)}"
         echo "  4) log_max_kb     : ${LOG_MAX_KB}"
-        echo "  0) Назад"
-        read -r -p "Выбор [0-4]: " opt
+        echo "  0) $(t back)"
+        read -r -p "$(tf choice_prompt 4)" opt
         case "$opt" in
-            1) set_boolean log_suspicious "$LOG_SUSP" "Логировать подозрительную активность?" ;;
-            2) set_boolean log_drops "$LOG_DROPS" "Логировать дропы терминальных правил?" ;;
-            3) set_string log_file "$LOG_FILE" "Путь к лог-файлу (пусто = syslog)" ;;
-            4) set_string log_max_kb "$LOG_MAX_KB" "Максимум (KB)" validate_positive_int ;;
+            1) set_boolean log_suspicious "$LOG_SUSP" q_log_susp ;;
+            2) set_boolean log_drops "$LOG_DROPS" q_log_drops ;;
+            3) set_string log_file "$LOG_FILE" p_log_file ;;
+            4) set_string log_max_kb "$LOG_MAX_KB" p_log_max_kb validate_positive_int ;;
             0) break ;;
         esac
         uci commit killswitch
@@ -472,18 +669,18 @@ menu_logging() {
 menu_lists() {
     while true; do
         clear
-        echo "${BOLD}=== Управление списками ===${RESET}"
+        echo "${BOLD}$(t lists_title)${RESET}"
         echo "  1) allowed_mark"
         echo "  2) allowed_iface"
         echo "  3) static_vps"
         echo "  4) ntp_servers"
-        echo "  0) Назад"
-        read -r -p "Выбор [0-4]: " opt
+        echo "  0) $(t back)"
+        read -r -p "$(tf choice_prompt 4)" opt
         case "$opt" in
-            1) manage_list main allowed_mark "маркеров" ;;
-            2) manage_list main allowed_iface "интерфейсов" ;;
-            3) manage_list main static_vps "статических VPS" validate_ip_cidr ;;
-            4) manage_list main ntp_servers "NTP серверов" validate_ip_plain ;;
+            1) manage_list main allowed_mark lt_marks ;;
+            2) manage_list main allowed_iface lt_ifaces ;;
+            3) manage_list main static_vps lt_static_vps validate_ip_cidr ;;
+            4) manage_list main ntp_servers lt_ntp validate_ip_plain ;;
             0) break ;;
         esac
         uci commit killswitch
@@ -493,74 +690,103 @@ menu_lists() {
 menu_ops() {
     while true; do
         clear
-        echo "${BOLD}=== Операции ksd ===${RESET}"
+        echo "${BOLD}$(t ops_title)${RESET}"
         echo "  1) status"
         echo "  2) self-test"
         echo "  3) dry-run full"
         echo "  4) dry-run baseline"
         echo "  5) install (baseline → full)"
         echo "  6) reset-counters"
-        echo "  7) показать версию и хеш"
-        echo "  8) показать логи ksd"
-        echo "  9) restart / reload"
-        echo " 10) remove-all (снос всех nft-объектов ksd)"
-        echo "  0) Назад"
-        read -r -p "Выбор [0-10]: " opt
+        echo "  $(t ops_version)"
+        echo "  $(t ops_logs)"
+        echo "  $(t ops_restart)"
+        echo "  $(t ops_removeall)"
+        echo "  0) $(t back)"
+        read -r -p "$(tf choice_prompt 10)" opt
         case "$opt" in
-            1) clear; $KSD status -config "$CONFIG"; echo; read -r -p "Enter..." d ;;
-            2) clear; $KSD self-test -config "$CONFIG"; echo; read -r -p "Enter..." d ;;
-            3) clear; $KSD dry-run full -config "$CONFIG"; echo; read -r -p "Enter..." d ;;
-            4) clear; $KSD dry-run baseline -config "$CONFIG"; echo; read -r -p "Enter..." d ;;
-            5) clear; $KSD install -config "$CONFIG"; echo; read -r -p "Enter..." d ;;
-            6) clear; $KSD reset-counters -config "$CONFIG"; echo; read -r -p "Enter..." d ;;
+            1) clear; $KSD status -config "$CONFIG"; echo; read -r -p "$(t press_enter)" d ;;
+            2) clear; $KSD self-test -config "$CONFIG"; echo; read -r -p "$(t press_enter)" d ;;
+            3) clear; $KSD dry-run full -config "$CONFIG"; echo; read -r -p "$(t press_enter)" d ;;
+            4) clear; $KSD dry-run baseline -config "$CONFIG"; echo; read -r -p "$(t press_enter)" d ;;
+            5) clear; $KSD install -config "$CONFIG"; echo; read -r -p "$(t press_enter)" d ;;
+            6) clear; $KSD reset-counters -config "$CONFIG"; echo; read -r -p "$(t press_enter)" d ;;
             7) show_artifact_info ;;
-            8) clear; logread | grep -iE 'ksd' | tail -60; echo; read -r -p "Enter..." d ;;
-            9) clear; $INIT restart; echo "${GREEN}✓ restart выполнен${RESET}"; sleep 2; $KSD status -config "$CONFIG" | head -8; echo; read -r -p "Enter..." d ;;
+            8) clear; logread | grep -iE 'ksd' | tail -60; echo; read -r -p "$(t press_enter)" d ;;
+            9) clear; $INIT restart; echo "${GREEN}$(t restart_ok)${RESET}"; sleep 2; $KSD status -config "$CONFIG" | head -8; echo; read -r -p "$(t press_enter)" d ;;
             10)
-                echo "${RED}Внимание: удалит все nft-таблицы ksd.${RESET}"
-                read -r -p "Продолжить? [y/N]: " c
-                case "$c" in y|Y) $KSD remove-all -config "$CONFIG" ;; *) echo "Отменено" ;; esac
-                echo; read -r -p "Enter..." d ;;
+                echo "${RED}$(t ops_warn_rm)${RESET}"
+                read -r -p "$(t confirm)" c
+                case "$c" in y|Y) $KSD remove-all -config "$CONFIG" ;; *) echo "$(t cancelled)" ;; esac
+                echo; read -r -p "$(t press_enter)" d ;;
             0) break ;;
         esac
     done
 }
 
+# ─── Выбор языка ────────────────────────────────────────
+
+menu_lang() {
+    clear
+    echo "${BOLD}$(t lang_title)${RESET}"
+    echo ""
+    echo "  1) English"
+    echo "  2) Русский"
+    echo "  3) 中文"
+    echo "  0) $(t back)"
+    read -r -p "$(tf choice_prompt 3)" opt
+    case "$opt" in
+        1) UI_LANG="en" ;;
+        2) UI_LANG="ru" ;;
+        3) UI_LANG="zh" ;;
+        *) return ;;
+    esac
+    if printf '%s\n' "$UI_LANG" > "$LANG_FILE" 2>/dev/null; then
+        echo "${GREEN}$(tf lang_saved "$(lang_name "$UI_LANG")")${RESET}"
+    else
+        echo "${YELLOW}$(tf lang_saved "$(lang_name "$UI_LANG")")${RESET}"
+        echo "${YELLOW}$(t lang_save_failed)${RESET}"
+    fi
+    sleep 1
+}
+
+# ─── Применение ─────────────────────────────────────────
+
 apply_and_restart() {
     clear
-    echo "${BOLD}Применение конфига и перезапуск ksd${RESET}"
+    echo "${BOLD}$(t apply_title)${RESET}"
     uci commit killswitch
-    echo "${DIM}Перезапуск...${RESET}"
+    echo "${DIM}$(t restarting)${RESET}"
     $INIT restart
     sleep 2
     echo ""
     $KSD status -config "$CONFIG" | head -12
     echo ""
-    read -r -p "Enter..." d
+    read -r -p "$(t press_enter)" d
 }
 
 main_menu() {
     while true; do
         clear
-        echo "${BOLD}=== Конфигуратор ksd ===${RESET}"
+        echo "${BOLD}$(t menu_title)${RESET}"
         echo ""
-        echo "  1) Показать текущую конфигурацию"
-        echo "  2) Основные параметры"
-        echo "  3) Сетевые настройки"
-        echo "  4) Тайминги / предохранитель"
-        echo "  5) DNS / DoH / DoQ / QUIC"
-        echo "  6) ARP защита"
-        echo "  7) Логи"
-        echo "  8) Управление списками"
-        echo "  9) Операции ksd (status/self-test/dry-run/install)"
-        echo " 10) Применить и перезапустить"
-        echo " 11) Показать все UCI-опции"
-        echo " 12) Показать артефакт (хеш/версия)"
-        echo "  0) Выход"
+        echo "  $(t mm_show)"
+        echo "  $(t mm_basic)"
+        echo "  $(t mm_network)"
+        echo "  $(t mm_timing)"
+        echo "  $(t mm_dns)"
+        echo "  $(t mm_arp)"
+        echo "  $(t mm_logs)"
+        echo "  $(t mm_lists)"
+        echo "  $(t mm_ops)"
+        echo "  $(t mm_apply)"
+        echo "  $(t mm_showuci)"
+        echo "  $(t mm_artifact)"
+        echo "  $(t mm_lang)"
+        echo "  $(t mm_exit)"
         echo ""
-        read -r -p "Выбор [0-12]: " choice
+        read -r -p "$(tf choice_prompt 13)" choice
         case "$choice" in
-            1) show_config; read -r -p "Enter..." d ;;
+            1) show_config; read -r -p "$(t press_enter)" d ;;
             2) menu_basic ;;
             3) menu_network ;;
             4) menu_timing ;;
@@ -570,9 +796,10 @@ main_menu() {
             8) menu_lists ;;
             9) menu_ops ;;
             10) apply_and_restart ;;
-            11) clear; uci show killswitch; echo; read -r -p "Enter..." d ;;
+            11) clear; uci show killswitch; echo; read -r -p "$(t press_enter)" d ;;
             12) show_artifact_info ;;
-            0) echo "Выход."; break ;;
+            13) menu_lang ;;
+            0) echo "$(t exit_msg)"; break ;;
         esac
     done
 }
