@@ -180,19 +180,19 @@ func NormalizeVPS(in []string, max int) ([]string, error) {
 		if e == "" {
 			continue
 		}
-		// Expand "A-B" into two separate addresses.
+		// Ranges "A-B" are passed to nft verbatim: the set is
+		// declared with `flags interval`, so the kernel expands
+		// them itself. Validate the element as a whole.
 		if strings.Contains(e, "-") && !strings.Contains(e, "/") {
-			if lo, hi, ok2 := splitRange(e); ok2 {
-				for _, a := range []string{lo, hi} {
-					if seen[a] {
-						continue
-					}
-					seen[a] = true
-					if validVPSElem(a) {
-						ok = append(ok, a)
-					} else {
-						warnOnce(a)
-					}
+			if _, _, ok2 := splitRange(e); ok2 {
+				if seen[e] {
+					continue
+				}
+				seen[e] = true
+				if validVPSElem(e) {
+					ok = append(ok, e)
+				} else {
+					warnOnce(e)
 				}
 				continue
 			}

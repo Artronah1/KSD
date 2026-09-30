@@ -179,18 +179,22 @@ func cmdBaseline(args []string) {
 }
 
 func cmdDryRun(args []string) {
-	cfg, _, ok := load(args)
+	// Separate positional (mode) from flags.
+	mode := "full"
+	flagArgs := []string{}
+	for _, a := range args {
+		if a == "baseline" || a == "full" {
+			mode = a
+		} else {
+			flagArgs = append(flagArgs, a)
+		}
+	}
+
+	cfg, _, ok := load(flagArgs)
 	if !ok {
 		os.Exit(1)
 	}
-	mode := "full"
-	if len(args) > 0 {
-		for _, a := range args {
-			if a == "baseline" || a == "full" {
-				mode = a
-			}
-		}
-	}
+
 	wan := DetectWAN(cfg)
 	var script string
 	if mode == "baseline" {

@@ -168,7 +168,15 @@ func LoadConfig(path string) (*Config, error) {
 		if !ok {
 			return def
 		}
-		return v == "1" || v == "true" || v == "yes" || v == "on" || v == "enabled"
+		switch strings.ToLower(strings.TrimSpace(v)) {
+			case "1", "true", "yes", "on", "enabled":
+				return true
+			case "0", "false", "no", "off", "disabled":
+				return false
+			default:
+				Warnf("option %s=%q is not a boolean, using default (%v)", key, v, def)
+				return def
+		}
 	}
 	getInt := func(key string, def int) int {
 		v, ok := main.Options[key]

@@ -111,9 +111,9 @@ func BuildFull(c *Config, wan, gw string, vps []string) []Table {
 		Counters: allCounters,
 		Sets: []Set{
 			{Name: c.Set, Type: "ipv4_addr", Flags: []string{"interval"}, Elements: vps},
-			{Name: c.WANSet, Type: "ifname", Flags: []string{"interval"}, Quote: true, Elements: wanElems},
+			{Name: c.WANSet, Type: "ifname", Quote: true, Elements: wanElems},
 			{Name: c.GWSet, Type: "ipv4_addr", Flags: []string{"interval"}, Elements: gwElems},
-			{Name: c.TrustedSet, Type: "ifname", Flags: []string{"interval"}, Quote: true, Elements: c.AllowedIfaces},
+			{Name: c.TrustedSet, Type: "ifname", Quote: true, Elements: c.AllowedIfaces},
 		},
 	}
 
@@ -317,8 +317,8 @@ func BuildBaseline(c *Config, wan string) []Table {
 		Counters: allCounters,
 		Sets: []Set{
 			{Name: c.Set, Type: "ipv4_addr", Flags: []string{"interval"}},
-			{Name: c.WANSet, Type: "ifname", Flags: []string{"interval"}, Quote: true, Elements: wanElems},
-			{Name: c.TrustedSet, Type: "ifname", Flags: []string{"interval"}, Quote: true, Elements: c.AllowedIfaces},
+			{Name: c.WANSet, Type: "ifname", Quote: true, Elements: wanElems},
+			{Name: c.TrustedSet, Type: "ifname", Quote: true, Elements: c.AllowedIfaces},
 		},
 	}
 	if c.DoHBlock && len(c.DOHServers) > 0 {
@@ -461,7 +461,7 @@ func BuildARP(c *Config, iface string) *Table {
 	hasMAC := len(c.ARPGatewayMACs) > 0
 	if hasMAC {
 		t.Sets = append(t.Sets, Set{
-			Name: "allowed_gw_mac", Type: "ether_addr", Flags: []string{"interval"},
+			Name: "allowed_gw_mac", Type: "ether_addr",
 			Elements: c.ARPGatewayMACs,
 		})
 	}
@@ -584,7 +584,7 @@ func buildMangle(c *Config, wanRef string) *Table {
 		Family: "inet",
 		Name:   c.MangleTable,
 		Sets: []Set{
-			{Name: c.WANSet, Type: "ifname", Flags: []string{"interval"}},
+			{Name: c.WANSet, Type: "ifname"},
 		},
 		Chains: []Chain{ch},
 	}

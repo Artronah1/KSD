@@ -120,6 +120,8 @@ func LoadUCI(path string) (*UCIFile, error) {
 				if prev, seen := cur.Options[k]; seen {
 					delete(cur.Options, k)
 					cur.Lists[k] = append(cur.Lists[k], prev, v)
+				} else {
+					cur.Options[k] = v
 				}
 			}
 		}
