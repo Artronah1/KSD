@@ -24,9 +24,10 @@ type Daemon struct {
 	c  *Config
 	st *State
 
-	lastVerify  time.Time
-	lastFullTry time.Time
-	lastSave    time.Time
+	lastVerify     time.Time
+	lastFullTry    time.Time
+	lastSave       time.Time
+	lastOffloadWarn bool
 }
 
 func NewDaemon(c *Config, st *State) *Daemon {
@@ -209,6 +210,23 @@ func (d *Daemon) handleEmptySource(now time.Time, why string) {
 
 func (d *Daemon) verifyTick(wan WANStatus) {
 	c, st := d.c, d.st
+
+	// Re-check flow offloading: if it was enabled while the daemon is
+	// running, forward_protect is bypassed. Log only on transition to
+	// avoid spamming every tick.
+	if c.ForwardProtect {
+		fo, fohw := FlowOffloading(DefaultFirewall)
+		overload := fo || fohw
+		if overload != d.lastOffloadWarn {
+			d.lastOffloadWarn = overload
+			if overload {
+				Errorf("CRITICAL: flow_offloading=%v hw=%v while forward_protect=1 — forwarded traffic bypasses killswitch_forward", fo, fohw)
+			} else {
+				Infof("flow offloading disabled; forward_protect is effective again")
+			}
+		}
+	}
+
 	if st.Mode != "full" {
 		// baseline is verified implicitly by tryFull attempts
 		return

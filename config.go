@@ -317,6 +317,9 @@ func (c *Config) Validate() error {
 	if c.WANInterface == "" {
 		return fmt.Errorf("wan_interface is empty")
 	}
+	if !reIface.MatchString(c.WANInterface) {
+		return fmt.Errorf("invalid wan_interface %q", c.WANInterface)
+	}
 	if !reName.MatchString(c.SourceFamily) || !reName.MatchString(c.SourceTable) ||
 		!reName.MatchString(c.SourceSet) {
 		return fmt.Errorf("invalid source_set %q %q %q",
