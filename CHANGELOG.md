@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.0] — 2026-09-30
+
+### Added
+
+- **Multilingual TUI configurator** (`scripts/ksd-configurator`):
+  interactive UCI editor with Russian, English and Chinese interface,
+  matching the rest of the documentation.
+
 ## [1.1.4] — 2026-09-30
 
 ### Added
