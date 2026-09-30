@@ -133,7 +133,7 @@ func cmdRun(args []string) {
 	defer cancel()
 
 	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
 	go func() { s := <-sigCh; Infof("signal %v", s); cancel() }()
 	if st.Mode == "full" {
 		selfHealOnStart(cfg, st)
