@@ -24,12 +24,14 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 // ---------------------------------------------------------------------------
@@ -37,16 +39,11 @@ import (
 // ---------------------------------------------------------------------------
 
 func nft(args ...string) ([]byte, error) {
-	cmd := exec.Command("nft", args...)
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	err := cmd.Run()
+	out, err := runCmd(10*time.Second, "nft", args...)
 	if err != nil {
-		return nil, fmt.Errorf("nft %s: %v: %s",
-			strings.Join(args, " "), err, strings.TrimSpace(stderr.String()))
+		return nil, fmt.Errorf("nft %s: %w", strings.Join(args, " "), err)
 	}
-	return stdout.Bytes(), nil
+	return out, nil
 }
 
 func nftJSON(args ...string) ([]byte, error) {
@@ -303,6 +300,26 @@ func ReadTable(family, table string) ([]nftChain, []nftRule, []nftSet, []nftCoun
 	return chains, rules, sets, counters, nil
 }
 
+// runCmd runs a command with a timeout. Returns stdout on success, or an
+// error if the command fails or the timeout expires. stderr is captured
+// and appended to the error for diagnostics.
+func runCmd(timeout time.Duration, name string, args ...string) ([]byte, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, name, args...)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	err := cmd.Run()
+	if ctx.Err() == context.DeadlineExceeded {
+		return stdout.Bytes(), fmt.Errorf("%s: timeout after %s", name, timeout)
+	}
+	if err != nil {
+		return stdout.Bytes(), fmt.Errorf("%s: %w (stderr: %s)", name, err, strings.TrimSpace(stderr.String()))
+	}
+	return stdout.Bytes(), nil
+}
+
 // ---------------------------------------------------------------------------
 // conntrack
 // ---------------------------------------------------------------------------
@@ -313,8 +330,7 @@ func ReadTable(family, table string) ([]nftChain, []nftRule, []nftSet, []nftCoun
 // NAT entries because the interface is not part of the tuple (the shell
 // version discovered this the hard way and documented it).
 func ConntrackFlush() error {
-	cmd := exec.Command("conntrack", "-F")
-	out, err := cmd.CombinedOutput()
+	out, err := runCmd(30*time.Second, "conntrack", "-F")
 	if err != nil {
 		return fmt.Errorf("conntrack -F: %v: %s", err, strings.TrimSpace(string(out)))
 	}

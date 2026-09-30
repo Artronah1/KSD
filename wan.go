@@ -13,8 +13,8 @@ package main
 
 import (
 	"encoding/json"
-	"os/exec"
 	"strings"
+	"time"
 )
 
 type WANStatus struct {
@@ -86,8 +86,8 @@ func ubusWANDevice(ifname string) string {
 }
 
 func ubusInterfaceStatus(ifname string) (*ubusIfStatus, error) {
-	out, err := exec.Command("ubus", "-t", "1", "call",
-		"network.interface."+ifname, "status").Output()
+	out, err := runCmd(3*time.Second, "ubus", "-t", "1", "call",
+			   "network.interface."+ifname, "status")
 	if err != nil {
 		return nil, err
 	}
@@ -102,7 +102,7 @@ func ubusInterfaceStatus(ifname string) (*ubusIfStatus, error) {
 // point-to-point / on-link default routes (no `via`), which is fine — the DHCP
 // rule then falls back to broadcast-only matching.
 func defaultGateway() string {
-	out, err := exec.Command("ip", "-4", "route", "show", "default").Output()
+	out, err := runCmd(3*time.Second, "ip", "-4", "route", "show", "default")
 	if err != nil {
 		return ""
 	}
