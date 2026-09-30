@@ -18,7 +18,7 @@ import (
 	"time"
 )
 
-const ksdVersion = "1.1.1"
+const ksdVersion = "1.1.2"
 
 func usage() {
 	fmt.Fprintf(os.Stderr, `ksd %s — nftables killswitch daemon for OpenWrt
