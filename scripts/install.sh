@@ -14,6 +14,9 @@
 #   sh install.sh -v v1.1.2      # pin a specific release tag
 #   sh install.sh -f ksd-arm64   # use a local binary instead of downloading
 #
+# Installs: /usr/sbin/ksd (daemon), /etc/init.d/ksd, /etc/init.d/ksd-boot,
+# /etc/ksd/emergency.nft, /usr/bin/ksdc (TUI configurator).
+
 set -eu
 
 REPO="Artronah1/KSD"
@@ -69,9 +72,9 @@ if [ -n "$LOCAL_BIN" ]; then
     log "using local binary: $LOCAL_BIN"
 else
     if [ "$VERSION" = "latest" ]; then
-        URL="https://github.com/${REPO}/releases/latest/download/${BIN}"
+        CFG_URL="https://raw.githubusercontent.com/${REPO}/main/scripts/ksdc"
     else
-        URL="https://github.com/${REPO}/releases/download/${VERSION}/${BIN}"
+        CFG_URL="https://raw.githubusercontent.com/${REPO}/${VERSION}/scripts/ksdc"
     fi
     log "downloading $URL"
 
@@ -92,27 +95,24 @@ chmod +x "$TMPDIR/ksd"
 CFG_SRC=""
 if [ -n "$LOCAL_BIN" ]; then
     # Local-binary mode: look next to the script.
-    for cand in "./scripts/ksd-configurator" "./ksd-configurator" \
-                "$(dirname "$0")/scripts/ksd-configurator" "$(dirname "$0")/ksd-configurator"; do
+    for cand in "./scripts/ksdc" "./ksdc" \
+                "$(dirname "$0")/scripts/ksdc" "$(dirname "$0")/ksdc"; do
         [ -f "$cand" ] && { CFG_SRC="$cand"; break; }
     done
 fi
 if [ -z "$CFG_SRC" ]; then
     if [ "$VERSION" = "latest" ]; then
-        CFG_URL="https://raw.githubusercontent.com/${REPO}/main/scripts/ksd-configurator"
+        CFG_URL="https://raw.githubusercontent.com/${REPO}/main/scripts/ksdc"
     else
-        CFG_URL="https://raw.githubusercontent.com/${REPO}/${VERSION}/scripts/ksd-configurator"
+        CFG_URL="https://raw.githubusercontent.com/${REPO}/${VERSION}/scripts/ksdc"
     fi
     log "fetching configurator from $CFG_URL"
     if command -v curl >/dev/null 2>&1; then
-        curl -fsSL -o "$TMPDIR/ksd-configurator" "$CFG_URL" 2>/dev/null && CFG_SRC="$TMPDIR/ksd-configurator"
+        curl -fsSL -o "$TMPDIR/ksdc" "$CFG_URL" 2>/dev/null && CFG_SRC="$TMPDIR/ksdc"
     elif command -v uclient-fetch >/dev/null 2>&1; then
-        uclient-fetch -q -O "$TMPDIR/ksd-configurator" "$CFG_URL" 2>/dev/null && CFG_SRC="$TMPDIR/ksd-configurator"
+        uclient-fetch -q -O "$TMPDIR/ksdc" "$CFG_URL" 2>/dev/null && CFG_SRC="$TMPDIR/ksdc"
     fi
     [ -z "$CFG_SRC" ] && warn "configurator download failed (optional)"
-fi
-if [ -n "$CFG_SRC" ]; then
-    chmod +x "$CFG_SRC"
 fi
 
 # ---------- autodetect WAN ----------
@@ -208,10 +208,14 @@ for pair in "ksd:/etc/init.d/ksd" "ksd-boot:/etc/init.d/ksd-boot" "emergency.nft
 done
 
 # Configurator (optional — may have been fetched or found locally).
+# Remove legacy names from earlier installs.
+[ -f /usr/bin/ksd-configurator ] && rm -f /usr/bin/ksd-configurator
+[ -f /usr/bin/ksd-config ] && rm -f /usr/bin/ksd-config
+
 if [ -n "$CFG_SRC" ]; then
-    cp "$CFG_SRC" /usr/bin/ksd-configurator
-    chmod +x /usr/bin/ksd-configurator
-    log "installed configurator → /usr/bin/ksd-configurator"
+    cp "$CFG_SRC" /usr/bin/ksdc
+    chmod +x /usr/bin/ksdc
+    log "installed configurator → /usr/bin/ksdc"
 fi
 
 # ---------- config ----------
@@ -269,10 +273,7 @@ config doh 'doh'
 	list server '149.112.112.112'
 	list server '94.140.14.14'
 	list server '94.140.15.15'
-EOFecho "  1. review /etc/config/killswitch (adjust source_set if needed)"
-echo "  2. /usr/sbin/ksd self-test -config /etc/config/killswitch"
-echo "  3. ksd-configurator  — interactive TUI editor"
-echo "  4. keep UART or a second SSH session open if you change firewall rules"
+EOF
 fi
 
 # ---------- enable + start ----------
@@ -307,7 +308,7 @@ log "status:"
 /usr/sbin/ksd status -config /etc/config/killswitch | head -15 || true
 
 log "done. Next steps:"
-echo "  1. review /etc/config/killswitch (or run: ksd-config)"
+echo "  1. review /etc/config/killswitch (or run: ksdc)"
 echo "  2. /usr/sbin/ksd self-test -config /etc/config/killswitch"
-echo "  3. ksd-configurator           — interactive TUI editor"
+echo "  3. ksdc              — interactive TUI editor"
 echo "  4. keep UART or a second SSH session open if you change firewall rules"

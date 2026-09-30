@@ -112,7 +112,7 @@ and does not touch it. Review `source_set`, `wan_device`, `arp_gateway`
 
 Interactive TUI configurator for UCI:
 
-    scripts/ksd-configurator
+    scripts/ksdc
 
 Lets you manage all options in `/etc/config/killswitch` without running `uci set` by hand.
 After making changes, use the "Apply and restart" menu item.

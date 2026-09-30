@@ -110,7 +110,7 @@
 
 交互式 UCI TUI 配置工具：
 
-    scripts/ksd-configurator
+    scripts/ksdc
 
 无需手动执行 `uci set`，即可管理 `/etc/config/killswitch` 中的所有选项。
 修改完成后，请使用「应用并重启」菜单项。
