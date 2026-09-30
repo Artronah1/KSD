@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.2] — 2026-09-30
+
+### Added
+
+- **In-place self-heal on startup**: if the daemon starts in `full` mode
+  but the live ruleset no longer matches the model (binary upgraded,
+  kernel flushed externally, config changed), it is reinstalled in a
+  single nft transaction. No `RemoveAll`, no conntrack flush — so there
+  is no window without rules, no window without full-mode filtering, and
+  no broken VPN sessions. On failure, the daemon falls back to baseline.
+
 ## [1.1.1] — 2026-09-30
 
 ### Fixed
