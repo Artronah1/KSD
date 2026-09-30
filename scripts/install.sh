@@ -247,8 +247,8 @@ log "enabling services"
 log "installing baseline + full"
 /usr/sbin/ksd install -config /etc/config/killswitch || warn "ksd install failed — check the config"
 
-log "starting service"
-/etc/init.d/ksd start 2>/dev/null || warn "ksd start failed"
+log "restarting service"
+/etc/init.d/ksd restart 2>/dev/null || warn "ksd restart failed"
 
 sleep 3
 log "status:"
