@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.4] — 2026-09-30
+
+### Added
+
+- **Universal installer** (`scripts/install.sh`): detects architecture,
+  WAN device, LAN bridges, gateway+MAC, and VPS source set; generates
+  `/etc/config/killswitch`; downloads the matching binary from GitHub
+  Releases; installs init scripts; enables the service.
+
+### Fixed
+
+- **`ks-loopback`**: matches `ip daddr 127.0.0.0/8` now — `oifname "lo"`
+  is not populated in the `output` hook for locally-generated loopback
+  traffic, so xray FIN packets hit `invalid_state_drops`.
+- **Subprocess timeouts**: `nft`, `ubus`, `conntrack`, `ip`.
+- **`SIGHUP`** handled.
+- **`InstallBaseline`**: skip conntrack flush on repeated baseline.
+- **CLI (`self-test`, `reset-counters`)**: no longer writes state.
+- **`install.sh`**: `restart` instead of `start`.
+- **Config validation**: `full_fail_max`, `log_max_kb`,
+  `source_set` family, `wan_interface`.
+- **Flow offloading**: re-checked on every verify tick (was only at
+  startup).
+
 ## [1.1.3] — 2026-09-30
 
 ### Added
