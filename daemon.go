@@ -122,8 +122,10 @@ func (d *Daemon) tickFull(wan WANStatus) {
 			orUnknown(st.WAN), wan.Device, orUnknown(st.GW), orUnknown(wan.GW))
 		if err := UpdateWANSet(c, wan.Device, wan.GW, true); err != nil {
 			Errorf("WAN set update failed: %v", err)
+		} else {
+			st.WAN, st.GW = wan.Device, wan.GW
+			_ = st.Save()
 		}
-		st.WAN = wan.Device
 		st.GW = wan.GW
 		_ = st.Save()
 	}

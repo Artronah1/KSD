@@ -117,10 +117,9 @@ func LoadUCI(path string) (*UCIFile, error) {
 			} else {
 				// A repeated `option` with the same key is treated as a list
 				// entry as well — matches how `uci show` renders UCI lists.
-				if _, seen := cur.Options[k]; seen {
-					cur.Lists[k] = append(cur.Lists[k], v)
-				} else {
-					cur.Options[k] = v
+				if prev, seen := cur.Options[k]; seen {
+					delete(cur.Options, k)
+					cur.Lists[k] = append(cur.Lists[k], prev, v)
 				}
 			}
 		}

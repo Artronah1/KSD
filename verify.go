@@ -162,8 +162,14 @@ func Verify(c *Config, tables []Table, wantWAN, wantGW string, wantVPS []string)
 			}
 		}
 		if wantVPS != nil {
-			if _, ok := setByName[c.Set]; !ok {
+			s, ok := setByName[c.Set]
+			if !ok {
 				errs.add("set %s missing", c.Set)
+			} else {
+				got := setElementsFromJSON(s.Elem)
+				if !sameStrings(got, wantVPS) {   // мультимножество, порядок не важен
+					errs.add("%s holds %d elements, want %d", c.Set, len(got), len(wantVPS))
+				}
 			}
 		}
 	}
@@ -172,7 +178,7 @@ func Verify(c *Config, tables []Table, wantWAN, wantGW string, wantVPS []string)
 		return nil
 	}
 	return errs
-}
+	}
 
 func containsAll(have, want []string) bool {
 	m := map[string]bool{}

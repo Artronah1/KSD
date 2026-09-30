@@ -18,7 +18,7 @@ import (
 	"time"
 )
 
-const ksdVersion = "1.0.0"
+const ksdVersion = "1.1.0"
 
 func usage() {
 	fmt.Fprintf(os.Stderr, `ksd %s — nftables killswitch daemon for OpenWrt
@@ -84,21 +84,22 @@ func load(args []string) (*Config, *State, bool) {
 	_ = fs.Parse(args)
 
 	cfg, err := LoadConfig(*configPath)
+	fromFile := true
 	if err != nil {
-		Errorf("cannot load config: %v", err)
-		return nil, nil, false
+		Errorf("cannot load config: %v — using built-in defaults", err)
+		cfg, fromFile = DefaultConfig(), false
+	} else if err := cfg.Validate(); err != nil {
+		Errorf("invalid configuration: %v — using built-in defaults", err)
+		cfg, fromFile = DefaultConfig(), false
 	}
+
 	if *debug {
 		L.SetLevel(LevelDebug)
 	}
 	if cfg.LogFile != "" {
 		L.SetFile(cfg.LogFile, cfg.LogMaxKB)
 	}
-	if err := cfg.Validate(); err != nil {
-		Errorf("invalid configuration: %v", err)
-		return cfg, nil, false
-	}
-	return cfg, LoadState(cfg.StatePath), true
+	return cfg, LoadState(cfg.StatePath), fromFile
 }
 
 // ---------------------------------------------------------------------------
@@ -133,15 +134,14 @@ func cmdRun(args []string) {
 
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
-	go func() {
-		s := <-sigCh
-		Infof("signal %v received", s)
-		if cfg.ForceStop {
-			Warnf("force_stop=1 — removing all killswitch objects")
-			_ = RemoveAll(cfg)
-		}
-		cancel()
-	}()
+	go func() { s := <-sigCh; Infof("signal %v", s); cancel() }()
+	NewDaemon(cfg, st).Run(ctx)
+	if cfg.ForceStop {
+		Warnf("force_stop=1 — removing all killswitch objects")
+		_ = RemoveAll(cfg)
+		st.Mode, st.LastVPS, st.FullFail = "removed", nil, 0
+		_ = st.Save()
+	}
 
 	NewDaemon(cfg, st).Run(ctx)
 }
