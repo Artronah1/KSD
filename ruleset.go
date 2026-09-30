@@ -133,7 +133,7 @@ func BuildFull(c *Config, wan, gw string, vps []string) []Table {
 	}
 	//Local loopback accept
 	out.Rules = append(out.Rules, Rule{
-		Comment: "ks-loopback", Expr: `oifname "lo"`,
+		Comment: "ks-loopback", Expr: `ip daddr 127.0.0.0/8`,
 		Anon: true, Verdict: "accept",
 	})
 
