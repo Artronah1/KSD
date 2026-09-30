@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.1] — 2026-09-30
+
+### Changed
+
+- Renamed `ksd-configurator` to **`ksdc`** — shorter, mirrors the daemon
+  name. Installed to `/usr/bin/ksdc`.
+- The installer removes legacy `/usr/bin/ksd-configurator` and
+  `/usr/bin/ksd-config` on upgrade.
+- The installer waits up to 15 seconds for the daemon to reach full mode
+  before printing the status.
+- Installer next-steps mention `ksdc`.
+
 ## [1.2.0] — 2026-09-30
 
 ### Added
