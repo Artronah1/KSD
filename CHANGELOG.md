@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.1] — 2026-09-30
+
+### Fixed
+
+- **UCI option parser (critical)** — the first `option` with a given key
+  was silently dropped: a missing `else` branch meant only *repeated*
+  options survived (and ended up in `Lists`, not `Options`). As a result,
+  every `option` in `/etc/config/killswitch` was ignored, and the daemon
+  ran on built-in defaults. This was masked by defaults that happened to
+  match the intended configuration for most settings (e.g. `mss_clamp`,
+  `source_set`, `wan_device` via ubus fallback). Fix: restore the
+  `else { cur.Options[k] = v }` branch.
+- **VPS ranges `A-B`** — the full range is now passed to nft verbatim
+  instead of being expanded into just its two endpoints.
+- **`flags interval` on `ifname` / `ether_addr` sets** — removed; the
+  flag is only meaningful for `ipv4_addr` sets and older nft/kernel
+  combinations rejected the whole apply.
+- **Bool option parsing** — unrecognized values (typos, trailing
+  whitespace, `"True"`) now fall back to the built-in default with a
+  warning instead of silently evaluating to `false`.
+- **`dry-run` flag order** — `-config` after a positional argument
+  (`dry-run baseline -config X`) is now honored.
+
 ## [1.1.0] — 2026-09-30
 
 Fail-close hardening. Four correctness fixes in the fail-close path.
