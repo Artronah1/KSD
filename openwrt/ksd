@@ -1,0 +1,53 @@
+#!/bin/sh /etc/rc.common
+# Copyright (c) 2026 Artronah1
+# SPDX-License-Identifier: MulanPubL-2.0
+# Layer 1 — ksd, the killswitch daemon.
+
+START=60
+STOP=10
+USE_PROCD=1
+
+PROG=/usr/sbin/ksd
+PIDFILE=/var/run/ksd.pid
+
+EXTRA_COMMANDS="status baseline dry_run self_test reset_counters remove_all"
+EXTRA_HELP="        status          Show detailed status
+        baseline        Force the emergency fail-close ruleset
+        dry_run [full|baseline]  Print the ruleset without applying
+        self_test       Verify live ruleset + DNS leak probe
+        reset_counters  Zero all named counters
+        remove_all      Delete every nft object ksd owns"
+
+start_service() {
+    # Layer 0 must already be in place. If it is not, apply it now rather than
+    # racing the daemon into a fail-open window.
+    nft list table inet ks_emergency >/dev/null 2>&1 || /etc/init.d/ksd-boot drop
+
+    procd_open_instance
+    procd_set_param command "$PROG" run
+    # Respawn is safe here: ksd has an internal breaker for repeated
+    # full-mode failures, and installing baseline is idempotent.
+    procd_set_param respawn 3600 5 5
+    procd_set_param stdout 1
+    procd_set_param stderr 1
+    procd_set_param pidfile "$PIDFILE"
+    procd_close_instance
+}
+
+stop_service() {
+    # Fail-close by design: the ruleset is left in place. ksd honours
+    # force_stop on SIGTERM and removes everything only if it is set to 1.
+    logger -t ksd "stop: ruleset intentionally retained (fail-close)"
+}
+
+reload_service() {
+    # Config change: let the daemon pick it up on its next poll (<=5s).
+    restart
+}
+
+status()   { "$PROG" status; }
+baseline() { "$PROG" baseline; }
+dry_run()  { "$PROG" dry-run "$1"; }
+self_test(){ "$PROG" self-test; }
+reset_counters() { "$PROG" reset-counters; }
+remove_all()     { "$PROG" remove-all; }

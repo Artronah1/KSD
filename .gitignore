@@ -1,8 +1,8 @@
-# Binaries
-ksd
-ksd-arm64
-KSD
-ksd-*
+# Binaries (repo root only — do not hide openwrt/ksd or scripts/ksdc)
+/ksd
+/ksd-arm64
+/KSD
+/ksd-*
 *.exe
 *.bin
 *.out
@@ -22,4 +22,4 @@ photo_*.jpg
 *.log
 
 # Whitelist: конфигуратор должен быть в git
-!scripts/ksd-configurator
+!scripts/ksdc
