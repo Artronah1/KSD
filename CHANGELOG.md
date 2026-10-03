@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.1] — 2026-10-03
+
+### Fixed
+
+- **`openwrt/ksd` was never in git** — the `.gitignore` rule `ksd`
+  (no leading slash) hid it in every directory. The Layer 1 init script
+  is now committed, and binaries are anchored to the repo root
+  (`/ksd`, `/ksd-arm64`, `/ksd-*`).
+- **`install.sh` now fails on a missing required file** instead of
+  silently skipping it. Previously, if `openwrt/ksd` was absent (which
+  it was), the installer would copy `ksd-boot` and `emergency.nft` but
+  not `/etc/init.d/ksd`, then fail to enable/start the service with
+  a warning.
+- **`tryFull` requires `conntrack` only for a baseline → full
+  transition** — a full → full reinstall (self-heal) does not flush,
+  so it must not require the utility.
+- **`verify` now counts every rule in the chain**, not only the ones
+  with a comment. A stray `accept` with an unrecognised comment — or
+  none — is a divergence.
+- **`verifyTick` re-checks after `tryFull`** and degrades to baseline
+  if full could not be restored (breaker open, WAN not L3-ready,
+  normalize rejected).
+- **`ruleset_test.go`** — asserts every rule in every mode has a
+  non-empty, unique-in-chain comment, and that the comment survives
+  rendering. Catches future regressions before they reach a router.
+
 ## [1.3.0] — 2026-10-03
 
 ### Fixed
