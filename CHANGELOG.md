@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.3] — 2026-10-03
+
+### Fixed
+
+- **`install.sh` works standalone.** Previously the installer looked for
+  `openwrt/ksd`, `openwrt/ksd-boot` and `openwrt/emergency.nft` only in
+  `./openwrt` and `./`. A user who downloaded just `install.sh` (as the
+  README instructs) hit `required file not found: ksd` and got nothing
+  installed. The installer now falls back to
+  `raw.githubusercontent.com/${REPO}/main/openwrt/${file}` when the
+  files are not present locally.
+
 ## [1.3.2] — 2026-10-03
 
 ### Fixed
