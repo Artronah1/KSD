@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.0] — 2026-10-03
+
+### Fixed
+
+- **Conntrack flush only on real mode transitions.** Baseline install no
+  longer flushed conntrack on a repeated call (procd respawn self-DoS
+  guard did not actually work: `st.Mode` was assigned before the check).
+  Full install no longer flushes when it is a self-heal reinstall of an
+  already-full ruleset — the VPN tunnel is not interrupted unnecessarily.
+- **VPS set is no longer wiped when the source is unreadable.** `tryFull`
+  and `selfHealOnStart` reused the last known set instead of installing an
+  empty `vps_ipv4`.
+- **`Run` no longer overrides `selfHealOnStart`.** If self-heal already
+  installed full, `Run` skips the baseline reinstall.
+- **`tickFull` no longer commits WAN/gateway state on a failed set update.**
+  Two unconditional lines after the `if/else` were removed; the update is
+  now retried on the next tick.
+- **Baseline is now verified.** `verifyTick` used to return early in
+  non-full mode with the assumption that `tryFull` covers it; on a wiped
+  table with the breaker open or conntrack missing, nothing restored it.
+- **`tick` at unknown WAN still verifies** (with WAN empty), so an
+  externally wiped table is restored even without a WAN device.
+
+### Added
+
+- **`verify` rejects rules without a `comment`.** A stray `nft insert
+  rule ... accept` ahead of the terminal drop would have bypassed the
+  killswitch silently; it is now flagged and the ruleset is reinstalled.
+- **Set diff hints** in verification errors: `(+extra -missing)`, at most
+  five of each.
+
+### Changed
+
+- Installer waits up to 15s for full mode before printing status.
+
 ## [1.2.1] — 2026-09-30
 
 ### Changed
