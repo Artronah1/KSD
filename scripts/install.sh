@@ -196,15 +196,18 @@ chmod +x /usr/sbin/ksd
 HERE="$(dirname "$0")"
 for pair in "ksd:/etc/init.d/ksd" "ksd-boot:/etc/init.d/ksd-boot" "emergency.nft:/etc/ksd/emergency.nft"; do
     src="${pair%%:*}"; dst="${pair##*:}"
+    found=0
     for cand in "./openwrt/$src" "./$src" "$HERE/openwrt/$src" "$HERE/$src"; do
         if [ -f "$cand" ]; then
             mkdir -p "$(dirname "$dst")"
             cp "$cand" "$dst"
             chmod +x "$dst" 2>/dev/null || true
             log "installed $cand → $dst"
+            found=1
             break
         fi
     done
+    [ "$found" = "0" ] && die "required file not found: $src (looked in ./openwrt, ./)"
 done
 
 # Configurator (optional — may have been fetched or found locally).
