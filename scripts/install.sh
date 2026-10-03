@@ -193,6 +193,9 @@ chmod +x /usr/sbin/ksd
 
 # init scripts: ksd-boot + ksd (init.d/ksd is the same file as ksd-boot? No —
 # two distinct scripts in the repo).
+#
+# Look locally first (./openwrt, ./), then fall back to GitHub raw so that
+# a standalone install.sh downloaded to /tmp works without the repo.
 HERE="$(dirname "$0")"
 for pair in "ksd:/etc/init.d/ksd" "ksd-boot:/etc/init.d/ksd-boot" "emergency.nft:/etc/ksd/emergency.nft"; do
     src="${pair%%:*}"; dst="${pair##*:}"
@@ -207,7 +210,26 @@ for pair in "ksd:/etc/init.d/ksd" "ksd-boot:/etc/init.d/ksd-boot" "emergency.nft
             break
         fi
     done
-    [ "$found" = "0" ] && die "required file not found: $src (looked in ./openwrt, ./)"
+    if [ "$found" = "0" ]; then
+        if [ "$VERSION" = "latest" ]; then
+            RAW_URL="https://raw.githubusercontent.com/${REPO}/main/openwrt/$src"
+        else
+            RAW_URL="https://raw.githubusercontent.com/${REPO}/${VERSION}/openwrt/$src"
+        fi
+        log "fetching openwrt/$src from $RAW_URL"
+        if command -v curl >/dev/null 2>&1; then
+            curl -fsSL -o "$TMPDIR/$src" "$RAW_URL" 2>/dev/null && found=1
+        elif command -v uclient-fetch >/dev/null 2>&1; then
+            uclient-fetch -q -O "$TMPDIR/$src" "$RAW_URL" 2>/dev/null && found=1
+        fi
+        if [ "$found" = "1" ]; then
+            mkdir -p "$(dirname "$dst")"
+            cp "$TMPDIR/$src" "$dst"
+            chmod +x "$dst" 2>/dev/null || true
+            log "installed $RAW_URL → $dst"
+        fi
+    fi
+    [ "$found" = "0" ] && die "required file not found: $src (looked in ./openwrt, ./ and tried GitHub raw)"
 done
 
 # Configurator (optional — may have been fetched or found locally).
