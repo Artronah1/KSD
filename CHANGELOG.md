@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.2] — 2026-10-03
+
+### Fixed
+
+- **`ks_emergency` could linger after `install.sh` + `ksd restart`.**
+  The Layer 0 emergency table is created by `ksd-boot` at START=15. On a
+  fresh install, `install.sh` runs `ksd install` (baseline → full, which
+  destroys `ks_emergency`), then `/etc/init.d/ksd restart`. The restart
+  goes through `start_service`, which sees no `ks_emergency` and applies
+  `ksd-boot drop` again. The new daemon then starts with `st.Mode=full`,
+  `selfHealOnStart` verifies the ruleset and returns, `Run` skips both
+  `InstallBaseline` and `tryFull` — and nobody destroys `ks_emergency`.
+  Result: all output and forward traffic was dropped by Layer 0 rules
+  while `ksd status` reported `full`. Reported by a real user right after
+  the v1.3.1 install.
+
+  Fix: `Run` and `selfHealOnStart` now unconditionally destroy
+  `inet ks_emergency` once our own ruleset is verified live, regardless
+  of which code path brought us there.
+
 ## [1.3.1] — 2026-10-03
 
 ### Fixed
