@@ -54,6 +54,13 @@ func (d *Daemon) Run(ctx context.Context) {
 		d.tryFull(wan)
 	}
 
+	// 3. Layer 0 (ks_emergency) is now redundant regardless of how we got
+	// here: either we just installed our own rules (baseline or full), or
+	// selfHealOnStart verified an existing full ruleset. Either way
+	// ks_emergency must not linger — it is a fail-close floor for the
+	// window before our first rules land, not a permanent layer.
+	_ = nftDestroy("inet", EmergencyTable)
+
 	ticker := time.NewTicker(c.PollInterval())
 	defer ticker.Stop()
 

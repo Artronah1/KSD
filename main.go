@@ -178,6 +178,7 @@ func selfHealOnStart(cfg *Config, st *State) {
 	tables := BuildFull(cfg, wan.Device, wan.GW, vps)
 	if err := Verify(cfg, tables, wan.Device, wan.GW, vps); err == nil {
 		Debugf("self-heal: live ruleset matches model")
+		_ = nftDestroy("inet", EmergencyTable)
 		return
 	} else {
 		Warnf("self-heal: live ruleset does not match model (%v); reinstalling in-place", err)
