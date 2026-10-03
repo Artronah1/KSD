@@ -72,9 +72,9 @@ if [ -n "$LOCAL_BIN" ]; then
     log "using local binary: $LOCAL_BIN"
 else
     if [ "$VERSION" = "latest" ]; then
-        CFG_URL="https://raw.githubusercontent.com/${REPO}/main/scripts/ksdc"
+        URL="https://github.com/${REPO}/releases/latest/download/${BIN}"
     else
-        CFG_URL="https://raw.githubusercontent.com/${REPO}/${VERSION}/scripts/ksdc"
+        URL="https://github.com/${REPO}/releases/download/${VERSION}/${BIN}"
     fi
     log "downloading $URL"
 

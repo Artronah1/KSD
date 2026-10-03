@@ -39,14 +39,20 @@ func NewDaemon(c *Config, st *State) *Daemon {
 func (d *Daemon) Run(ctx context.Context) {
 	c, st := d.c, d.st
 
-	// 1. fail-close immediately, before anything else can go wrong.
+	// 1. ensure fail-close floor is in place unless selfHealOnStart (cmdRun)
+	// already installed full. waitForWAN takes up to 3s; baseline does not
+	// depend on the WAN device.
 	wan := d.waitForWAN(ctx)
-	if err := InstallBaseline(c, st, wan.Device); err != nil {
-		Errorf("CRITICAL: could not install baseline: %v", err)
+	if st.Mode != "full" {
+		if err := InstallBaseline(c, st, wan.Device); err != nil {
+			Errorf("CRITICAL: could not install baseline: %v", err)
+		}
 	}
 
 	// 2. try to reach full mode straight away (narrows the fail-close window).
-	d.tryFull(wan)
+	if st.Mode != "full" {
+		d.tryFull(wan)
+	}
 
 	ticker := time.NewTicker(c.PollInterval())
 	defer ticker.Stop()
@@ -89,7 +95,13 @@ func (d *Daemon) tick(ctx context.Context) {
 	wan := DetectWAN(c)
 	if wan.Device == "" {
 		// WAN gone: keep whatever ruleset we have (both are fail-close).
+		// Still verify occasionally — the table may have been wiped externally.
 		Debugf("WAN device unknown, holding current mode=%s", st.Mode)
+		if now.Sub(d.lastVerify) >= c.VerifyInterval() {
+			d.lastVerify = now
+			d.verifyTick(wan)
+		}
+		d.readCounters(now)
 		return
 	}
 
@@ -127,8 +139,6 @@ func (d *Daemon) tickFull(wan WANStatus) {
 			st.WAN, st.GW = wan.Device, wan.GW
 			_ = st.Save()
 		}
-		st.GW = wan.GW
-		_ = st.Save()
 	}
 
 	// --- upstream VPN endpoints ---
@@ -227,19 +237,21 @@ func (d *Daemon) verifyTick(wan WANStatus) {
 		}
 	}
 
-	if st.Mode != "full" {
-		// baseline is verified implicitly by tryFull attempts
-		return
-	}
-
 	tables := BuildFor(c, st.Mode, st.WAN, st.GW, st.LastVPS)
 
 	if err := Verify(c, tables, st.WAN, st.GW, st.LastVPS); err != nil {
-		Warnf("periodic verification failed: %v", err)
-		d.tryFull(wan)
+		if st.Mode == "full" {
+			Warnf("periodic verification failed: %v", err)
+			d.tryFull(wan)
+			return
+		}
+		// Non-full mode: baseline diverged (table wiped, rule removed).
+		// Reinstall in place — baseline is the fail-close floor.
+		Warnf("baseline verification failed: %v — reinstalling", err)
+		_ = InstallBaseline(c, st, wan.Device)
 		return
 	}
-	Debugf("verification ok (mode=full wan=%s vps=%d)", st.WAN, len(st.LastVPS))
+	Debugf("verification ok (mode=%s wan=%s vps=%d)", st.Mode, st.WAN, len(st.LastVPS))
 }
 
 // tryFull attempts to reach full mode, honouring the breaker.
@@ -277,6 +289,9 @@ func (d *Daemon) tryFull(wan WANStatus) {
 			Errorf("VPS update rejected: %v", err)
 			return
 		}
+	} else if len(st.LastVPS) > 0 {
+		vps = append(vps, st.LastVPS...)
+		Warnf("source unreadable; reusing last known VPS set (%d elements)", len(vps))
 	}
 	if c.MergeStaticVPS {
 		vps = append(vps, c.StaticVPS...)

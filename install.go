@@ -106,20 +106,21 @@ func InstallBaseline(c *Config, st *State, wan string) error {
 		return err
 	}
 
+	// Fail-close must also invalidate pre-existing sessions, otherwise they
+	// keep flowing through ks-established. Only on a real transition: a
+	// repeated baseline install (procd respawn loop on a broken config)
+	// would otherwise flush every stateful session every few seconds.
+	wasFull := st.Mode != "baseline"
+	if wasFull && conntrackAvailable() {
+		if err := ConntrackFlush(); err != nil {
+			Errorf("baseline conntrack flush failed: %v", err)
+		}
+	}
+
 	st.Mode = "baseline"
 	st.WAN = wan
 	if err := st.Save(); err != nil {
 		Warnf("could not persist state: %v", err)
-	}
-
-	// Fail-close must also invalidate pre-existing sessions, otherwise they
-	// keep flowing through ks-established. But only on a real transition:
-	// a repeated baseline install (procd respawn loop on a broken config)
-	// would otherwise flush every stateful session every few seconds.
-	if st.Mode != "baseline" && conntrackAvailable() {
-		if err := ConntrackFlush(); err != nil {
-			Errorf("baseline conntrack flush failed: %v", err)
-		}
 	}
 	// The boot-time emergency table (Layer 0) is now redundant. Destroy it
 	// *after* our own ruleset is live, never before: it is the only thing
@@ -155,9 +156,11 @@ func InstallFull(c *Config, st *State, wan, gw string, vps []string) error {
 		return err
 	}
 
-	// Mode transition invalidates established sessions: they were accepted
-	// under the previous ruleset.
-	if conntrackAvailable() {
+	// Mode transition invalidates established sessions only when coming
+	// from baseline: on a self-heal re-install the old full ruleset was
+	// also fail-close, and flushing would kill the VPN tunnel needlessly.
+	wasBaseline := st.Mode != "full"
+	if wasBaseline && conntrackAvailable() {
 		if err := ConntrackFlush(); err != nil {
 			Errorf("conntrack flush after full install failed: %v", err)
 		}

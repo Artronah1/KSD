@@ -118,7 +118,22 @@ func Verify(c *Config, tables []Table, wantWAN, wantGW string, wantVPS []string)
 			if len(unknown) > 0 {
 				sort.Strings(unknown)
 				Warnf("chain %s has %d rule(s) not in the model: %v",
-					want.Name, len(unknown), unknown)
+				      want.Name, len(unknown), unknown)
+			}
+
+			// Any rule without a comment is not part of our model. In a
+			// non-adversarial setting (root can kill us anyway) this is
+			// still worth flagging: a stray `accept` ahead of the terminal
+			// drop would bypass the killswitch silently.
+			uncommented := 0
+			for _, r := range rules {
+				if r.Chain == want.Name && r.Comment == "" {
+					uncommented++
+				}
+			}
+			if uncommented > 0 {
+				errs.add("chain %s has %d rule(s) without comment — not part of the model",
+					 want.Name, uncommented)
 			}
 		}
 
@@ -167,8 +182,9 @@ func Verify(c *Config, tables []Table, wantWAN, wantGW string, wantVPS []string)
 				errs.add("set %s missing", c.Set)
 			} else {
 				got := setElementsFromJSON(s.Elem)
-				if !sameStrings(got, wantVPS) {   // мультимножество, порядок не важен
-					errs.add("%s holds %d elements, want %d", c.Set, len(got), len(wantVPS))
+				if !sameStrings(got, wantVPS) {
+					errs.add("%s holds %d elements, want %d%s",
+						 c.Set, len(got), len(wantVPS), diffHint(got, wantVPS))
 				}
 			}
 		}
@@ -178,7 +194,43 @@ func Verify(c *Config, tables []Table, wantWAN, wantGW string, wantVPS []string)
 		return nil
 	}
 	return errs
+}
+
+// diffHint returns a short "(+X -Y)" summary of set differences, or "" if
+// the sets are equal. Used for diagnostics only.
+func diffHint(have, want []string) string {
+	h := map[string]bool{}
+	for _, x := range have {
+		h[x] = true
 	}
+	w := map[string]bool{}
+	for _, x := range want {
+		w[x] = true
+	}
+	var extra, missing []string
+	for x := range h {
+		if !w[x] {
+			extra = append(extra, x)
+		}
+	}
+	for x := range w {
+		if !h[x] {
+			missing = append(missing, x)
+		}
+	}
+	if len(extra) == 0 && len(missing) == 0 {
+		return ""
+	}
+	sort.Strings(extra)
+	sort.Strings(missing)
+	if len(extra) > 5 {
+		extra = append(extra[:5], "...")
+	}
+	if len(missing) > 5 {
+		missing = append(missing[:5], "...")
+	}
+	return fmt.Sprintf(" (+%v -%v)", extra, missing)
+}
 
 func containsAll(have, want []string) bool {
 	m := map[string]bool{}

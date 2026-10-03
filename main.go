@@ -160,7 +160,14 @@ func selfHealOnStart(cfg *Config, st *State) {
 	}
 
 	src := ReadVPSSource(cfg)
-	vps, _ := NormalizeVPS(src.Elements, cfg.MaxVPSElements)
+	var vps []string
+	if src.OK {
+		vps, _ = NormalizeVPS(src.Elements, cfg.MaxVPSElements)
+	} else if len(st.LastVPS) > 0 {
+		// Source unreadable — reuse the last known set instead of wiping it.
+		vps = append(vps, st.LastVPS...)
+		Warnf("self-heal: source unreadable; reusing last known VPS set (%d elements)", len(vps))
+	}
 	if cfg.MergeStaticVPS && len(cfg.StaticVPS) > 0 {
 		vps = append(vps, cfg.StaticVPS...)
 		if nv, err := NormalizeVPS(vps, cfg.MaxVPSElements); err == nil {
