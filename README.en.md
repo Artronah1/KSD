@@ -8,7 +8,7 @@
   <img src="Project.png" alt="KSD" width="350">
 </p>
 <p align="center">
-  <img src="https://img.shields.io/badge/Go-1.22-00ADD8?logo=go&logoColor=white" alt="Go">
+  <img src="https://img.shields.io/badge/Go-1.27.1-00ADD8?logo=go&logoColor=white" alt="Go">
   <img src="https://img.shields.io/badge/Platform-OpenWrt-orange" alt="OpenWrt">
   <img src="https://img.shields.io/badge/Status-v4.0--dev-yellow" alt="Status">
 </p>
