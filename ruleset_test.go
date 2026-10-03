@@ -17,15 +17,21 @@ import (
 func TestAllRulesHaveComments(t *testing.T) {
 	configs := map[string]*Config{
 		"defaults": DefaultConfig(),
-		"quic": func() *Config { c := DefaultConfig(); c.QUICBlock = true; return c }(),
-		"arp": func() *Config { c := DefaultConfig(); c.ARPProtection = true; c.ARPGateways = []string{"192.168.0.1"}; c.ARPGatewayMACs = []string{"aa:bb:cc:dd:ee:ff"}; return c }(),
+		"quic":     func() *Config { c := DefaultConfig(); c.QUICBlock = true; return c }(),
+		"arp": func() *Config {
+			c := DefaultConfig()
+			c.ARPProtection = true
+			c.ARPGateways = []string{"192.168.0.1"}
+			c.ARPGatewayMACs = []string{"aa:bb:cc:dd:ee:ff"}
+			return c
+		}(),
 		"no-mss-ttl": func() *Config {
 			c := DefaultConfig()
 			c.MSSClamp = false
 			c.TTLSet = false
 			return c
 		}(),
-		"dns-off": func() *Config { c := DefaultConfig(); c.DNSBlock = false; return c }(),
+		"dns-off":  func() *Config { c := DefaultConfig(); c.DNSBlock = false; return c }(),
 		"ipv6-off": func() *Config { c := DefaultConfig(); c.IPv6Block = false; return c }(),
 	}
 	modes := []string{"full", "baseline"}

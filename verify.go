@@ -118,22 +118,23 @@ func Verify(c *Config, tables []Table, wantWAN, wantGW string, wantVPS []string)
 			if len(unknown) > 0 {
 				sort.Strings(unknown)
 				Warnf("chain %s has %d rule(s) not in the model: %v",
-				      want.Name, len(unknown), unknown)
+					want.Name, len(unknown), unknown)
 			}
 
-			// Any rule without a comment is not part of our model. In a
-			// non-adversarial setting (root can kill us anyway) this is
-			// still worth flagging: a stray `accept` ahead of the terminal
-			// drop would bypass the killswitch silently.
-			uncommented := 0
+			// Any rule in our private chains that is not part of the model is
+			// a divergence — including rules without a comment (a stray
+			// `accept` would silently bypass the killswitch) and rules with a
+			// comment we do not recognise. Our chains are owned by ksd; fw4
+			// or other agents add their rules elsewhere.
+			total := 0
 			for _, r := range rules {
-				if r.Chain == want.Name && r.Comment == "" {
-					uncommented++
+				if r.Chain == want.Name {
+					total++
 				}
 			}
-			if uncommented > 0 {
-				errs.add("chain %s has %d rule(s) without comment — not part of the model",
-					 want.Name, uncommented)
+			if total != len(want.Rules) {
+				errs.add("chain %s has %d rule(s), model wants %d",
+					want.Name, total, len(want.Rules))
 			}
 		}
 
@@ -184,7 +185,7 @@ func Verify(c *Config, tables []Table, wantWAN, wantGW string, wantVPS []string)
 				got := setElementsFromJSON(s.Elem)
 				if !sameStrings(got, wantVPS) {
 					errs.add("%s holds %d elements, want %d%s",
-						 c.Set, len(got), len(wantVPS), diffHint(got, wantVPS))
+						c.Set, len(got), len(wantVPS), diffHint(got, wantVPS))
 				}
 			}
 		}

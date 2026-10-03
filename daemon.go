@@ -24,9 +24,9 @@ type Daemon struct {
 	c  *Config
 	st *State
 
-	lastVerify     time.Time
-	lastFullTry    time.Time
-	lastSave       time.Time
+	lastVerify      time.Time
+	lastFullTry     time.Time
+	lastSave        time.Time
 	lastOffloadWarn bool
 }
 
@@ -243,6 +243,15 @@ func (d *Daemon) verifyTick(wan WANStatus) {
 		if st.Mode == "full" {
 			Warnf("periodic verification failed: %v", err)
 			d.tryFull(wan)
+			// tryFull may have bailed (breaker open, WAN not L3-ready,
+			// normalize rejected, conntrack missing on transition).
+			// Re-check; if still divergent, degrade to baseline — the
+			// fail-close floor.
+			if Verify(c, BuildFor(c, st.Mode, st.WAN, st.GW, st.LastVPS),
+				st.WAN, st.GW, st.LastVPS) != nil {
+				Errorf("full not restored after verify failure — degrading to baseline")
+				_ = InstallBaseline(c, st, wan.Device)
+			}
 			return
 		}
 		// Non-full mode: baseline diverged (table wiped, rule removed).
@@ -274,9 +283,10 @@ func (d *Daemon) tryFull(wan WANStatus) {
 		Debugf("WAN %s not L3-ready, staying in baseline", orUnknown(wan.Device))
 		return
 	}
-	if !conntrackAvailable() {
-		// full mode requires it: without a flush, stale NAT sessions survive
-		// endpoint changes.
+	// conntrack is only needed for a baseline → full transition (the flush
+	// kills stale direct sessions). A full → full reinstall does not flush,
+	// so it must not require conntrack.
+	if st.Mode != "full" && !conntrackAvailable() {
 		Errorf("conntrack utility missing — refusing full mode, staying in baseline")
 		return
 	}
