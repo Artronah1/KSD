@@ -178,12 +178,30 @@ for tbl in passwall2 passwall sing-box xray v2ray; do
         [ -n "$SET" ] && { SOURCE_SET="inet $tbl $SET"; break; }
     fi
 done
-
 if [ -n "$SOURCE_SET" ]; then
     log "VPS source: $SOURCE_SET"
 else
     warn "no VPS set detected; writing source_set='inet passwall2 psw2_vps' (edit manually)"
     SOURCE_SET="inet passwall2 psw2_vps"
+fi
+
+# ---------- check flow offloading ----------
+# Software and hardware flow offloading bypass nftables after the first
+# packet of each connection. With forward_protect=1 this makes the
+# killswitch effectively useless for anything but the first packet —
+# the guard in ksd will log CRITICAL, but the user should know about
+# this *before* the rules are applied.
+log "checking flow offloading"
+FO="$(uci -q get firewall.@defaults[0].flow_offloading 2>/dev/null || echo 0)"
+FOHW="$(uci -q get firewall.@defaults[0].flow_offloading_hw 2>/dev/null || echo 0)"
+if [ "$FO" = "1" ] || [ "$FOHW" = "1" ]; then
+    warn "flow offloading is ENABLED (sw=$FO hw=$FOHW)"
+    warn "  forwarded traffic bypasses killswitch_forward after the first packet"
+    warn "  ksd will log CRITICAL at startup; this is expected"
+    warn "  for full protection disable it:"
+    warn "      uci set firewall.@defaults[0].flow_offloading='0'"
+    warn "      uci set firewall.@defaults[0].flow_offloading_hw='0'"
+    warn "      uci commit firewall && /etc/init.d/firewall restart"
 fi
 
 # ---------- install files ----------
