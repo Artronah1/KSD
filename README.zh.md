@@ -10,7 +10,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/Go-1.27.1-00ADD8?logo=go&logoColor=white" alt="Go">
   <img src="https://img.shields.io/badge/Platform-OpenWrt-orange" alt="OpenWrt">
-  <img src="https://img.shields.io/badge/Status-v4.0--dev-yellow" alt="Status">
+  <img src="https://img.shields.io/badge/Status-v1.4.x-blue" alt="Status">
 </p>
 基于 nftables、用 Go 编写的 OpenWrt fail-close killswitch 守护进程。
 设计用于配合 Passwall2：所有未打标记的流量一律阻断，
@@ -132,4 +132,4 @@
 ## 状态
 
 - v3.5（shell）— 参考实现，2026-08-30 冻结
-- v4.0（Go）— 积极开发中
+- v1.4.x（Go）— 当前稳定版本

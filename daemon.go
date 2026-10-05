@@ -178,7 +178,8 @@ func (d *Daemon) tickFull(wan WANStatus) {
 
 		if c.SourceDisabled {
 			// source_set = "none": trust marks + static_vps only.
-			// Never touch the VPS set, never flush conntrack.
+			// Set vps_ipv4 to exactly the static list (possibly empty).
+			// No conntrack flush, no SourceDown handling.
 			var elems []string
 			if len(c.StaticVPS) > 0 {
 				var err error
@@ -187,12 +188,10 @@ func (d *Daemon) tickFull(wan WANStatus) {
 					return
 				}
 			}
-			if len(elems) > 0 {
-				if _, err := UpdateVPSSet(c, st, elems); err != nil {
-					Errorf("VPS set update failed: %v", err)
-				}
-				_ = st.Save()
+			if _, err := UpdateVPSSet(c, st, elems); err != nil {
+				Errorf("VPS set update failed: %v", err)
 			}
+			_ = st.Save()
 			return
 		}
 

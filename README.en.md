@@ -10,7 +10,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/Go-1.27.1-00ADD8?logo=go&logoColor=white" alt="Go">
   <img src="https://img.shields.io/badge/Platform-OpenWrt-orange" alt="OpenWrt">
-  <img src="https://img.shields.io/badge/Status-v4.0--dev-yellow" alt="Status">
+  <img src="https://img.shields.io/badge/Status-v1.4.x-blue" alt="Status">
 </p>
 A Go daemon that implements a fail-close killswitch for OpenWrt on top of nftables.
 Intended for use with Passwall2: all unmarked traffic is blocked
@@ -135,4 +135,4 @@ source code available.
 ## Status
 
 - v3.5 (shell) — reference implementation, frozen 2026-08-30
-- v4.0 (Go) — active development
+- v1.4.x (Go) — current stable release

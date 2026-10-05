@@ -10,7 +10,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/Go-1.27.1-00ADD8?logo=go&logoColor=white" alt="Go">
   <img src="https://img.shields.io/badge/Platform-OpenWrt-orange" alt="OpenWrt">
-  <img src="https://img.shields.io/badge/Status-v1.3.x-blue" alt="Status">
+  <img src="https://img.shields.io/badge/Status-v1.4.x-blue" alt="Status">
 </p>
 Демон на Go, реализующий fail-close killswitch для OpenWrt поверх nftables.
 Предназначен для использования с Passwall2: весь немаркированный трафик
