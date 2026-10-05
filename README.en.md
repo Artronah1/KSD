@@ -28,6 +28,15 @@ unless it is headed to an allowed VPS address.
 - Periodic verification of the rules in the kernel
 - Zero external dependencies (CGO_ENABLED=0, static build)
 
+### Works with
+
+- **Passwall2** — reads `inet passwall2 psw2_vps` (tested).
+- **Mihomo / OpenClash** — `source_set none` + `allowed_mark '<routing-mark>'`
+  (decimal marks accepted: `6666`).
+- **mwan3** — `source_set none` + `allowed_mark '<value>/<mask>'`
+  (e.g. `0xff/0xff`).
+- **Nikki**, **sing-box**, **custom scripts** — `source_set none` + `allowed_mark`.
+
 ## Building
 
     go build -o ksd ./...

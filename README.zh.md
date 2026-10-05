@@ -28,6 +28,18 @@
 - 定期校验内核中的规则
 - 零外部依赖（CGO_ENABLED=0，静态编译）
 
+适用于：
+
+    Passwall2 — 读取 inet passwall2 psw2_vps（已测试）。
+
+    Mihomo / OpenClash — source_set none + allowed_mark '<routing-mark>'
+    （接受十进制标记：6666）。
+
+    mwan3 — source_set none + allowed_mark '<value>/<mask>'
+    （例如 0xff/0xff）。
+
+    Nikki、sing-box、自定义脚本 — source_set none + allowed_mark。
+
 ## 编译
 
     go build -o ksd ./...

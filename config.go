@@ -310,9 +310,48 @@ func splitCSV(in []string) []string {
 var (
 	reName  = regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_]*$`)
 	reIface = regexp.MustCompile(`^[a-zA-Z0-9._:@-]+$`)
-	reMark  = regexp.MustCompile(`^0x[0-9a-fA-F]+$`)
+	reMark  = regexp.MustCompile(`^(0x[0-9a-fA-F]+|\d+)(/(0x[0-9a-fA-F]+|\d+))?$`)
 	reMAC   = regexp.MustCompile(`^([0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}$`)
 )
+
+// normalizeMark converts a user-supplied mark to canonical form:
+//
+//	"6666"        → "0x1a0a"
+//	"0xff"        → "0xff"
+//	"0xff/0xff"   → "0xff/0xff"
+//	"255/255"     → "0xff/0xff"
+func normalizeMark(s string) (string, error) {
+	var valStr, maskStr string
+	if i := strings.Index(s, "/"); i >= 0 {
+		valStr, maskStr = s[:i], s[i+1:]
+	} else {
+		valStr = s
+	}
+
+	parse := func(x string) (uint64, error) {
+		x = strings.TrimSpace(x)
+		if x == "" {
+			return 0, fmt.Errorf("empty")
+		}
+		if strings.HasPrefix(x, "0x") || strings.HasPrefix(x, "0X") {
+			return strconv.ParseUint(x[2:], 16, 32)
+		}
+		return strconv.ParseUint(x, 10, 32)
+	}
+
+	val, err := parse(valStr)
+	if err != nil {
+		return "", fmt.Errorf("invalid mark value %q", valStr)
+	}
+	if maskStr == "" {
+		return fmt.Sprintf("0x%x", val), nil
+	}
+	mask, err := parse(maskStr)
+	if err != nil {
+		return "", fmt.Errorf("invalid mask %q", maskStr)
+	}
+	return fmt.Sprintf("0x%x/0x%x", val, mask), nil
+}
 
 func (c *Config) Validate() error {
 	if !reName.MatchString(c.Table) {
@@ -338,10 +377,12 @@ func (c *Config) Validate() error {
 	if len(c.AllowedMarks) == 0 {
 		return fmt.Errorf("allowed_mark is empty")
 	}
-	for _, m := range c.AllowedMarks {
-		if !reMark.MatchString(m) {
-			return fmt.Errorf("invalid mark %q (expected 0x...)", m)
+	for i, m := range c.AllowedMarks {
+		nm, err := normalizeMark(m)
+		if err != nil {
+			return fmt.Errorf("invalid mark %q: %v", m, err)
 		}
+		c.AllowedMarks[i] = nm
 	}
 	if len(c.AllowedIfaces) == 0 {
 		return fmt.Errorf("allowed_iface is empty")

@@ -28,6 +28,18 @@
 - Периодическая верификация правил в ядре
 - Нулевые внешние зависимости (CGO_ENABLED=0, статическая сборка)
 
+Совместимо с:
+
+    Passwall2 — считывает inet passwall2 psw2_vps (проверено).
+
+    Mihomo / OpenClash — source_set none + allowed_mark '<routing-mark>'
+    (принимаются десятичные метки: 6666).
+
+    mwan3 — source_set none + allowed_mark '<value>/<mask>'
+    (например, 0xff/0xff).
+
+    Nikki, sing-box, пользовательские скрипты — source_set none + allowed_mark.
+
 ### Скачивание
 
 Выбери файл под архитектуру роутера (`uname -m`):
