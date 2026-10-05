@@ -4,7 +4,6 @@
 package main
 
 import (
-	"fmt"
 	"strings"
 	"testing"
 )
@@ -59,9 +58,8 @@ func TestAllRulesHaveComments(t *testing.T) {
 				}
 			}
 
-			// Verify the comment actually survives rendering: verify reads
-			// comments back from the kernel via `nft -j list`, so a comment
-			// that gets mangled by the renderer would be invisible.
+			// Verify the base comment is present in the rendered script.
+			// renderRule appends "@<hash>", so we match on the prefix.
 			script := Render(tables)
 			for _, tbl := range tables {
 				for _, ch := range tbl.Chains {
@@ -69,8 +67,8 @@ func TestAllRulesHaveComments(t *testing.T) {
 						if r.Comment == "" {
 							continue
 						}
-						want := fmt.Sprintf("comment %q", r.Comment)
-						if !strings.Contains(script, want) {
+						needle := "comment \"" + r.Comment
+						if !strings.Contains(script, needle) {
 							t.Errorf("%s/%s/%s: comment %q not in rendered script",
 								name, mode, ch.Name, r.Comment)
 						}

@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.5.0] — 2026-10-05
+
+### Added
+
+- **Decimal marks and masked marks in `allowed_mark`.** The option now
+  accepts:
+  - `0x50535732` (hex, unchanged)
+  - `6666` (decimal, normalised to `0x1a0a`)
+  - `0xff/0xff` (value/mask, rendered as `meta mark and 0xff == 0xff`)
+
+  This unblocks Mihomo/OpenClash (`routing-mark` is decimal) and
+  mwan3 (mask-based marks), which previously required the user to
+  hand-convert values.
+
+- **Comment hashing in the ruleset model.** Every rule comment now
+  carries a short `@<hash>` suffix computed from the full rule text
+  (Expr, Counter, Anon, Log, Verdict). Verification compares comments,
+  so any change to the match expression — a different `allowed_mark`,
+  a new `dport`, a toggled `ttl_set_enabled` — now changes the comment
+  and forces reinstall.
+
+  **Bug fixed:** previously, a config change that only affected the
+  match expression left the old ruleset in the kernel, because the
+  comment was unchanged and Verify saw no divergence. This is why
+  changing `allowed_mark` from `0x50535732` to `6666` had no effect
+  until a manual flush.
+
+### Changed
+
+- `verify.go` no longer needs to strip the `@hash` suffix: the model
+  itself now carries the hashed comment.
+
 ## [1.4.0] — 2026-10-05
 
 ### Added

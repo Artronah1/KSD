@@ -21,7 +21,9 @@ package main
 // version: this is a port, not a rewrite of the firewall semantics.
 
 import (
+	"crypto/sha256"
 	"fmt"
+	"strconv"
 	"strings"
 )
 
@@ -89,6 +91,81 @@ func BuildFor(c *Config, mode, wan, gw string, vps []string) []Table {
 		return BuildFull(c, wan, gw, vps)
 	}
 	return BuildBaseline(c, wan)
+}
+
+// markRules returns one Rule per "exact mark set" plus one Rule per masked
+// mark. nftables does not allow mixing "meta mark { a, b }" with "meta mark
+// and M == V" in a single expression, so exact marks go into one set-rule
+// and each masked mark gets its own and-rule.
+//
+// `comment` is used for the first rule; subsequent masked rules get
+// "-1", "-2", … suffixes so that comments stay unique inside the chain
+// (Verify relies on unique comments).
+func markRules(c *Config, comment, counter, extra string) []Rule {
+	var exact []string
+	type maskEntry struct{ val, mask uint64 }
+	var masks []maskEntry
+
+	for _, m := range c.AllowedMarks {
+		if i := strings.Index(m, "/"); i >= 0 {
+			v, _ := strconv.ParseUint(strings.TrimPrefix(m[:i], "0x"), 16, 32)
+			mk, _ := strconv.ParseUint(strings.TrimPrefix(m[i+1:], "0x"), 16, 32)
+			masks = append(masks, maskEntry{v, mk})
+		} else {
+			exact = append(exact, m)
+		}
+	}
+
+	prefix := ""
+	if extra != "" {
+		prefix = extra + " "
+	}
+
+	var out []Rule
+	if len(exact) > 0 {
+		out = append(out, Rule{
+			Comment: comment,
+			Expr:    prefix + "meta nfproto ipv4 meta mark { " + strings.Join(exact, ", ") + " }",
+			Counter: counter,
+			Verdict: "accept",
+		})
+	}
+	for i, me := range masks {
+		suffix := ""
+		if i > 0 || len(exact) > 0 {
+			suffix = fmt.Sprintf("-%d", i+1)
+		}
+		out = append(out, Rule{
+			Comment: comment + suffix,
+			Expr:    fmt.Sprintf("%smeta nfproto ipv4 meta mark and 0x%x == 0x%x", prefix, me.mask, me.val),
+			Counter: counter,
+			Verdict: "accept",
+		})
+	}
+	return out
+}
+
+// hashComments appends "@<hash>" to every rule comment. The hash is derived
+// from the full rule text (Expr, Counter, Anon, Log, Verdict), so a change in
+// any of them changes the comment. Verify compares comments, so this is what
+// forces a reinstall when the model diverges from the kernel — without it,
+// a config change that only affects the match expression (e.g. a different
+// allowed_mark) would leave the old ruleset running.
+func hashComments(tables []Table) {
+	for ti := range tables {
+		for ci := range tables[ti].Chains {
+			for ri := range tables[ti].Chains[ci].Rules {
+				r := &tables[ti].Chains[ci].Rules[ri]
+				key := r.Comment + "|" + r.Expr + "|" + r.Counter
+				if r.Anon {
+					key += "|anon"
+				}
+				key += "|" + r.Log + "|" + r.Verdict
+				h := sha256.Sum256([]byte(key))
+				r.Comment = fmt.Sprintf("%s@%x", r.Comment, h[:4])
+			}
+		}
+	}
 }
 
 // BuildFull returns the full ruleset: everything the shell's `full` mode
@@ -167,28 +244,26 @@ func BuildFull(c *Config, wan, gw string, vps []string) []Table {
 
 	// 5-6. PMTU: related ICMP/ICMPv6 errors
 	out.Rules = append(out.Rules,
-			   Rule{Comment: "ks-icmp-err-v4",
-				   Expr: "ct state related icmp type { destination-unreachable, time-exceeded }",
-				   Anon: true, Verdict: "accept"},
-				   Rule{Comment: "ks-icmp-err-v6",
-					   Expr: "ct state related icmpv6 type { destination-unreachable, packet-too-big, time-exceeded }",
-					   Anon: true, Verdict: "accept"},
+		Rule{Comment: "ks-icmp-err-v4",
+			Expr: "ct state related icmp type { destination-unreachable, time-exceeded }",
+			Anon: true, Verdict: "accept"},
+		Rule{Comment: "ks-icmp-err-v6",
+			Expr: "ct state related icmpv6 type { destination-unreachable, packet-too-big, time-exceeded }",
+			Anon: true, Verdict: "accept"},
 	)
 
 	// 7-10. leak classes — unconditional drop, before any identification
 	out.Rules = append(out.Rules, leakBlocks(c, "oifname @"+c.WANSet, "")...)
 
 	// 11-13. identification
+	out.Rules = append(out.Rules, markRules(c, "ks-ident-mark", "allow_mark", "")...)
 	out.Rules = append(out.Rules,
-			   Rule{Comment: "ks-ident-mark",
-				   Expr:    "meta nfproto ipv4 meta mark { " + marks + " }",
-				   Counter: "allow_mark", Verdict: "accept"},
-				   Rule{Comment: "ks-ident-vps",
-					   Expr:    "meta nfproto ipv4 ip daddr @" + c.Set,
-					   Counter: "allow_vps", Verdict: "accept"},
-					   Rule{Comment: "ks-established",
-						   Expr:    "meta nfproto ipv4 ct state established,related",
-						   Counter: "allow_established", Verdict: "accept"},
+		Rule{Comment: "ks-ident-vps",
+			Expr:    "meta nfproto ipv4 ip daddr @" + c.Set,
+			Counter: "allow_vps", Verdict: "accept"},
+		Rule{Comment: "ks-established",
+			Expr:    "meta nfproto ipv4 ct state established,related",
+			Counter: "allow_established", Verdict: "accept"},
 	)
 
 	// 14. IPv6
@@ -245,12 +320,12 @@ func BuildFull(c *Config, wan, gw string, vps []string) []Table {
 			Anon:    true, Verdict: "accept",
 		})
 		fwd.Rules = append(fwd.Rules,
-				   Rule{Comment: "ks-icmp-err-v4-fwd",
-					   Expr: "ct state related icmp type { destination-unreachable, time-exceeded }",
-					   Anon: true, Verdict: "accept"},
-		     Rule{Comment: "ks-icmp-err-v6-fwd",
-			     Expr: "ct state related icmpv6 type { destination-unreachable, packet-too-big, time-exceeded }",
-			     Anon: true, Verdict: "accept"},
+			Rule{Comment: "ks-icmp-err-v4-fwd",
+				Expr: "ct state related icmp type { destination-unreachable, time-exceeded }",
+				Anon: true, Verdict: "accept"},
+			Rule{Comment: "ks-icmp-err-v6-fwd",
+				Expr: "ct state related icmpv6 type { destination-unreachable, packet-too-big, time-exceeded }",
+				Anon: true, Verdict: "accept"},
 		)
 		fwd.Rules = append(fwd.Rules, leakBlocks(c, "oifname @"+c.WANSet, "_fwd")...)
 
@@ -262,16 +337,14 @@ func BuildFull(c *Config, wan, gw string, vps []string) []Table {
 			Expr:    "iifname @" + c.WANSet + " ct status dnat",
 			Anon:    true, Verdict: "accept",
 		})
+		fwd.Rules = append(fwd.Rules, markRules(c, "ks-ident-mark-fwd", "allow_mark_fwd", "")...)
 		fwd.Rules = append(fwd.Rules,
-				   Rule{Comment: "ks-ident-mark-fwd",
-					   Expr:    "meta nfproto ipv4 meta mark { " + marks + " }",
-					   Counter: "allow_mark_fwd", Verdict: "accept"},
-		     Rule{Comment: "ks-ident-vps-fwd",
-			     Expr:    "meta nfproto ipv4 ip daddr @" + c.Set,
-			     Counter: "allow_vps_fwd", Verdict: "accept"},
-		     Rule{Comment: "ks-established-fwd",
-			     Expr:    "meta nfproto ipv4 ct state established,related",
-			     Counter: "allow_established_fwd", Verdict: "accept"},
+			Rule{Comment: "ks-ident-vps-fwd",
+				Expr:    "meta nfproto ipv4 ip daddr @" + c.Set,
+				Counter: "allow_vps_fwd", Verdict: "accept"},
+			Rule{Comment: "ks-established-fwd",
+				Expr:    "meta nfproto ipv4 ct state established,related",
+				Counter: "allow_established_fwd", Verdict: "accept"},
 		)
 		if c.QUICBlock {
 			fwd.Rules = append(fwd.Rules, Rule{
@@ -298,6 +371,7 @@ func BuildFull(c *Config, wan, gw string, vps []string) []Table {
 	if a := BuildARP(c, wan); a != nil {
 		tables = append(tables, *a)
 	}
+	hashComments(tables)
 	return tables
 }
 
@@ -305,7 +379,6 @@ func BuildFull(c *Config, wan, gw string, vps []string) []Table {
 // a known WAN device (DHCP is allowed without oifname), exactly like the shell
 // baseline.
 func BuildBaseline(c *Config, wan string) []Table {
-	marks := strings.Join(c.AllowedMarks, ", ")
 	wanElems := []string{}
 	if wan != "" && wan != "unknown" {
 		wanElems = append(wanElems, wan)
@@ -341,10 +414,10 @@ func BuildBaseline(c *Config, wan string) []Table {
 		Counter: "invalid_state_drops", Verdict: "drop",
 	})
 	out.Rules = append(out.Rules,
-			   Rule{Comment: "ks-dhcpv4",
-				   Expr: "meta nfproto ipv4 udp sport 68 udp dport 67", Anon: true, Verdict: "accept"},
-		    Rule{Comment: "ks-dhcpv6",
-			    Expr: "meta nfproto ipv6 udp sport 546 udp dport 547", Anon: true, Verdict: "accept"},
+		Rule{Comment: "ks-dhcpv4",
+			Expr: "meta nfproto ipv4 udp sport 68 udp dport 67", Anon: true, Verdict: "accept"},
+		Rule{Comment: "ks-dhcpv6",
+			Expr: "meta nfproto ipv6 udp sport 546 udp dport 547", Anon: true, Verdict: "accept"},
 	)
 	if len(c.NTPServers) > 0 {
 		out.Rules = append(out.Rules, Rule{
@@ -354,12 +427,12 @@ func BuildBaseline(c *Config, wan string) []Table {
 		})
 	}
 	out.Rules = append(out.Rules,
-			   Rule{Comment: "ks-icmp-err-v4",
-				   Expr: "ct state related icmp type { destination-unreachable, time-exceeded }",
-				   Anon: true, Verdict: "accept"},
-		    Rule{Comment: "ks-icmp-err-v6",
-			    Expr: "ct state related icmpv6 type { destination-unreachable, packet-too-big, time-exceeded }",
-			    Anon: true, Verdict: "accept"},
+		Rule{Comment: "ks-icmp-err-v4",
+			Expr: "ct state related icmp type { destination-unreachable, time-exceeded }",
+			Anon: true, Verdict: "accept"},
+		Rule{Comment: "ks-icmp-err-v6",
+			Expr: "ct state related icmpv6 type { destination-unreachable, packet-too-big, time-exceeded }",
+			Anon: true, Verdict: "accept"},
 	)
 	// Baseline leak blocks match "not a trusted interface" because the WAN
 	// device is not known yet.
@@ -368,16 +441,14 @@ func BuildBaseline(c *Config, wan string) []Table {
 	// FIX (review P2-7): baseline now uses the same named counters as full.
 	// Previously these were anonymous, so after a downgrade `status` still
 	// showed stale full-mode numbers and looked healthy.
+	out.Rules = append(out.Rules, markRules(c, "ks-ident-mark", "allow_mark", "")...)
 	out.Rules = append(out.Rules,
-			   Rule{Comment: "ks-ident-mark",
-				   Expr:    "meta nfproto ipv4 meta mark { " + marks + " }",
-				   Counter: "allow_mark", Verdict: "accept"},
-		    Rule{Comment: "ks-ident-vps",
-			    Expr:    "meta nfproto ipv4 ip daddr @" + c.Set,
-			    Counter: "allow_vps", Verdict: "accept"},
-		    Rule{Comment: "ks-established",
-			    Expr:    "meta nfproto ipv4 ct state established,related",
-			    Counter: "allow_established", Verdict: "accept"},
+		Rule{Comment: "ks-ident-vps",
+			Expr:    "meta nfproto ipv4 ip daddr @" + c.Set,
+			Counter: "allow_vps", Verdict: "accept"},
+		Rule{Comment: "ks-established",
+			Expr:    "meta nfproto ipv4 ct state established,related",
+			Counter: "allow_established", Verdict: "accept"},
 	)
 	if c.IPv6Block {
 		out.Rules = append(out.Rules, Rule{
@@ -408,23 +479,23 @@ func BuildBaseline(c *Config, wan string) []Table {
 			Anon:    true, Verdict: "accept",
 		})
 		fwd.Rules = append(fwd.Rules,
-				   Rule{Comment: "ks-icmp-err-v4-fwd",
-					   Expr: "ct state related icmp type { destination-unreachable, time-exceeded }",
-					   Anon: true, Verdict: "accept"},
-		     Rule{Comment: "ks-icmp-err-v6-fwd",
-			     Expr: "ct state related icmpv6 type { destination-unreachable, packet-too-big, time-exceeded }",
-			     Anon: true, Verdict: "accept"},
-		     Rule{Comment: "ks-dnat",
-			     Expr: "iifname @" + c.WANSet + " ct status dnat", Anon: true, Verdict: "accept"},
-		     Rule{Comment: "ks-ident-mark-fwd",
-			     Expr:    "meta nfproto ipv4 meta mark { " + marks + " }",
-			     Counter: "allow_mark_fwd", Verdict: "accept"},
-		     Rule{Comment: "ks-ident-vps-fwd",
-			     Expr:    "meta nfproto ipv4 ip daddr @" + c.Set,
-			     Counter: "allow_vps_fwd", Verdict: "accept"},
-		     Rule{Comment: "ks-established-fwd",
-			     Expr:    "meta nfproto ipv4 ct state established,related",
-			     Counter: "allow_established_fwd", Verdict: "accept"},
+			Rule{Comment: "ks-icmp-err-v4-fwd",
+				Expr: "ct state related icmp type { destination-unreachable, time-exceeded }",
+				Anon: true, Verdict: "accept"},
+			Rule{Comment: "ks-icmp-err-v6-fwd",
+				Expr: "ct state related icmpv6 type { destination-unreachable, packet-too-big, time-exceeded }",
+				Anon: true, Verdict: "accept"},
+			Rule{Comment: "ks-dnat",
+				Expr: "iifname @" + c.WANSet + " ct status dnat", Anon: true, Verdict: "accept"},
+		)
+		fwd.Rules = append(fwd.Rules, markRules(c, "ks-ident-mark-fwd", "allow_mark_fwd", "")...)
+		fwd.Rules = append(fwd.Rules,
+			Rule{Comment: "ks-ident-vps-fwd",
+				Expr:    "meta nfproto ipv4 ip daddr @" + c.Set,
+				Counter: "allow_vps_fwd", Verdict: "accept"},
+			Rule{Comment: "ks-established-fwd",
+				Expr:    "meta nfproto ipv4 ct state established,related",
+				Counter: "allow_established_fwd", Verdict: "accept"},
 		)
 		fwd.Rules = append(fwd.Rules, terminalRules(c, "", "fwd")...)
 		t.Chains = append(t.Chains, fwd)
@@ -434,6 +505,7 @@ func BuildBaseline(c *Config, wan string) []Table {
 	if a := BuildARP(c, wan); a != nil {
 		tables = append(tables, *a)
 	}
+	hashComments(tables)
 	return tables
 }
 
@@ -473,30 +545,30 @@ func BuildARP(c *Config, iface string) *Table {
 	rep := in + " arp operation 2"
 	if hasMAC {
 		ch.Rules = append(ch.Rules,
-				  Rule{Comment: "ks-arp-req-gw",
-					  Expr: req + " arp saddr ip @allowed_gw arp saddr ether @allowed_gw_mac",
-					  Log:  "limit rate 5/second burst 10 packets", Anon: true, Verdict: "accept"},
-		    Rule{Comment: "ks-arp-req-other", Expr: req, Anon: true, Verdict: "drop"},
-		    Rule{Comment: "ks-arp-reply-gw",
-			    Expr: rep + " arp saddr ip @allowed_gw arp saddr ether @allowed_gw_mac",
-			    Log:  "limit rate 5/second burst 10 packets", Anon: true, Verdict: "accept"},
-		    Rule{Comment: "ks-arp-spoof-mac",
-			    Expr: rep + " arp saddr ip @allowed_gw arp saddr ether != @allowed_gw_mac",
-			    Anon: true, Verdict: "drop"},
-		    Rule{Comment: "ks-arp-spoof-nongw",
-			    Expr: rep + " arp saddr ip != @allowed_gw", Anon: true, Verdict: "drop"},
+			Rule{Comment: "ks-arp-req-gw",
+				Expr: req + " arp saddr ip @allowed_gw arp saddr ether @allowed_gw_mac",
+				Log:  "limit rate 5/second burst 10 packets", Anon: true, Verdict: "accept"},
+			Rule{Comment: "ks-arp-req-other", Expr: req, Anon: true, Verdict: "drop"},
+			Rule{Comment: "ks-arp-reply-gw",
+				Expr: rep + " arp saddr ip @allowed_gw arp saddr ether @allowed_gw_mac",
+				Log:  "limit rate 5/second burst 10 packets", Anon: true, Verdict: "accept"},
+			Rule{Comment: "ks-arp-spoof-mac",
+				Expr: rep + " arp saddr ip @allowed_gw arp saddr ether != @allowed_gw_mac",
+				Anon: true, Verdict: "drop"},
+			Rule{Comment: "ks-arp-spoof-nongw",
+				Expr: rep + " arp saddr ip != @allowed_gw", Anon: true, Verdict: "drop"},
 		)
 	} else {
 		ch.Rules = append(ch.Rules,
-				  Rule{Comment: "ks-arp-req-gw",
-					  Expr: req + " arp saddr ip @allowed_gw",
-					  Log:  "limit rate 5/second burst 10 packets", Anon: true, Verdict: "accept"},
-		    Rule{Comment: "ks-arp-req-other", Expr: req, Anon: true, Verdict: "drop"},
-		    Rule{Comment: "ks-arp-reply-gw",
-			    Expr: rep + " arp saddr ip @allowed_gw",
-			    Log:  "limit rate 5/second burst 10 packets", Anon: true, Verdict: "accept"},
-		    Rule{Comment: "ks-arp-spoof-nongw",
-			    Expr: rep + " arp saddr ip != @allowed_gw", Anon: true, Verdict: "drop"},
+			Rule{Comment: "ks-arp-req-gw",
+				Expr: req + " arp saddr ip @allowed_gw",
+				Log:  "limit rate 5/second burst 10 packets", Anon: true, Verdict: "accept"},
+			Rule{Comment: "ks-arp-req-other", Expr: req, Anon: true, Verdict: "drop"},
+			Rule{Comment: "ks-arp-reply-gw",
+				Expr: rep + " arp saddr ip @allowed_gw",
+				Log:  "limit rate 5/second burst 10 packets", Anon: true, Verdict: "accept"},
+			Rule{Comment: "ks-arp-spoof-nongw",
+				Expr: rep + " arp saddr ip != @allowed_gw", Anon: true, Verdict: "drop"},
 		)
 	}
 	ch.Rules = append(ch.Rules, Rule{
@@ -511,12 +583,12 @@ func leakBlocks(c *Config, match, suffix string) []Rule {
 	var out []Rule
 	if c.DNSBlock {
 		out = append(out,
-			     Rule{Comment: "ks-block-dns",
-				     Expr: match + " udp dport { 53, 853, 8853 }",
-				     Counter: "dns_leak_drops" + suffix, Verdict: "drop"},
-	       Rule{Comment: "ks-block-dns-tcp",
-		       Expr: match + " tcp dport { 53, 853, 8853 }",
-		       Counter: "dns_leak_drops" + suffix, Verdict: "drop"},
+			Rule{Comment: "ks-block-dns",
+				Expr:    match + " udp dport { 53, 853, 8853 }",
+				Counter: "dns_leak_drops" + suffix, Verdict: "drop"},
+			Rule{Comment: "ks-block-dns-tcp",
+				Expr:    match + " tcp dport { 53, 853, 8853 }",
+				Counter: "dns_leak_drops" + suffix, Verdict: "drop"},
 		)
 	}
 	if c.DoQBlock {
@@ -539,7 +611,7 @@ func terminalRules(c *Config, extra, which string) []Rule {
 			return []Rule{
 				{Comment: "ks-terminal-out", Counter: "output_leak_drops"},
 				{Comment: "ks-log-out",
-					Log: `limit rate 3/minute burst 5 packets log prefix "ks-drop-out: " level warn`,
+					Log:     `limit rate 3/minute burst 5 packets log prefix "ks-drop-out: " level warn`,
 					Verdict: "drop"},
 			}
 		}
@@ -588,92 +660,96 @@ func buildMangle(c *Config, wanRef string) *Table {
 		},
 		Chains: []Chain{ch},
 	}
-	}
-	// ---------------------------------------------------------------------------
-	// rendering
-	// ---------------------------------------------------------------------------
+}
 
-	// Render produces a complete nft script. `nft -f` on this file is one atomic
-	// transaction: either the whole ruleset lands or nothing changes.
-	func Render(tables []Table) string {
-		var b strings.Builder
-		for _, t := range tables {
-			fmt.Fprintf(&b, "add table %s %s\n", t.Family, t.Name)
-			fmt.Fprintf(&b, "flush table %s %s\n", t.Family, t.Name)
-			for _, c := range t.Counters {
-				fmt.Fprintf(&b, "add counter %s %s %s\n", t.Family, t.Name, c)
-			}
-			for _, s := range t.Sets {
-				b.WriteString(renderSet(t.Family, t.Name, s))
-			}
-			for _, ch := range t.Chains {
-				fmt.Fprintf(&b, "add chain %s %s %s { type %s hook %s priority %d; policy %s; }\n",
-					    t.Family, t.Name, ch.Name, ch.Type, ch.Hook, ch.Priority, ch.Policy)
-				for _, r := range ch.Rules {
-					b.WriteString(renderRule(t.Family, t.Name, ch.Name, r))
-				}
-			}
-			b.WriteString("\n")
-		}
-		return b.String()
-	}
+// ---------------------------------------------------------------------------
+// rendering
+// ---------------------------------------------------------------------------
 
-	func renderSet(family, table string, s Set) string {
-		var b strings.Builder
-		fmt.Fprintf(&b, "add set %s %s %s { type %s", family, table, s.Name, s.Type)
-		if len(s.Flags) > 0 {
-			b.WriteString("; flags " + strings.Join(s.Flags, ","))
+// Render produces a complete nft script. `nft -f` on this file is one atomic
+// transaction: either the whole ruleset lands or nothing changes.
+func Render(tables []Table) string {
+	var b strings.Builder
+	for _, t := range tables {
+		fmt.Fprintf(&b, "add table %s %s\n", t.Family, t.Name)
+		fmt.Fprintf(&b, "flush table %s %s\n", t.Family, t.Name)
+		for _, c := range t.Counters {
+			fmt.Fprintf(&b, "add counter %s %s %s\n", t.Family, t.Name, c)
 		}
-		if len(s.Elements) > 0 {
-			b.WriteString("; elements = { " + renderElements(s) + " }")
+		for _, s := range t.Sets {
+			b.WriteString(renderSet(t.Family, t.Name, s))
 		}
-		b.WriteString("; }\n")
-		return b.String()
-	}
-
-	func renderElements(s Set) string {
-		parts := make([]string, 0, len(s.Elements))
-		for _, e := range s.Elements {
-			if s.Quote {
-				parts = append(parts, fmt.Sprintf("%q", e))
-			} else {
-				parts = append(parts, e)
+		for _, ch := range t.Chains {
+			fmt.Fprintf(&b, "add chain %s %s %s { type %s hook %s priority %d; policy %s; }\n",
+				t.Family, t.Name, ch.Name, ch.Type, ch.Hook, ch.Priority, ch.Policy)
+			for _, r := range ch.Rules {
+				b.WriteString(renderRule(t.Family, t.Name, ch.Name, r))
 			}
 		}
-		return strings.Join(parts, ", ")
+		b.WriteString("\n")
 	}
+	return b.String()
+}
 
-	func renderRule(family, table, chain string, r Rule) string {
-		var b strings.Builder
-		fmt.Fprintf(&b, "add rule %s %s %s", family, table, chain)
-		if r.Expr != "" {
-			b.WriteString(" " + r.Expr)
-		}
-		if r.Counter != "" {
-			b.WriteString(" counter name " + r.Counter)
-		}
-		if r.Anon {
-			b.WriteString(" counter")
-		}
-		if r.Log != "" {
-			b.WriteString(" " + r.Log)
-		}
-		if r.Verdict != "" {
-			b.WriteString(" " + r.Verdict)
-		}
-		fmt.Fprintf(&b, " comment %q\n", r.Comment)
-		return b.String()
+func renderSet(family, table string, s Set) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "add set %s %s %s { type %s", family, table, s.Name, s.Type)
+	if len(s.Flags) > 0 {
+		b.WriteString("; flags " + strings.Join(s.Flags, ","))
 	}
+	if len(s.Elements) > 0 {
+		b.WriteString("; elements = { " + renderElements(s) + " }")
+	}
+	b.WriteString("; }\n")
+	return b.String()
+}
 
-	// RenderSetUpdate produces the minimal transaction that replaces a set's
-	// contents: flush, then re-add. Used for WAN / gateway / VPS updates so we
-	// never rebuild the whole ruleset for a data change.
-	func RenderSetUpdate(family, table string, s Set) string {
-		var b strings.Builder
-		fmt.Fprintf(&b, "flush set %s %s %s\n", family, table, s.Name)
-		if len(s.Elements) > 0 {
-			fmt.Fprintf(&b, "add element %s %s %s { %s }\n",
-				    family, table, s.Name, renderElements(s))
+func renderElements(s Set) string {
+	parts := make([]string, 0, len(s.Elements))
+	for _, e := range s.Elements {
+		if s.Quote {
+			parts = append(parts, fmt.Sprintf("%q", e))
+		} else {
+			parts = append(parts, e)
 		}
-		return b.String()
 	}
+	return strings.Join(parts, ", ")
+}
+
+func renderRule(family, table, chain string, r Rule) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "add rule %s %s %s", family, table, chain)
+	if r.Expr != "" {
+		b.WriteString(" " + r.Expr)
+	}
+	if r.Counter != "" {
+		b.WriteString(" counter name " + r.Counter)
+	}
+	if r.Anon {
+		b.WriteString(" counter")
+	}
+	if r.Log != "" {
+		b.WriteString(" " + r.Log)
+	}
+	if r.Verdict != "" {
+		b.WriteString(" " + r.Verdict)
+	}
+	// Include a short hash of the match expression so that a config change
+	// (e.g. a different allowed_mark) changes the comment and forces
+	// Verify → reinstall.
+	fmt.Fprintf(&b, " comment %q\n", r.Comment)
+	return b.String()
+}
+
+// RenderSetUpdate produces the minimal transaction that replaces a set's
+// contents: flush, then re-add. Used for WAN / gateway / VPS updates so we
+// never rebuild the whole ruleset for a data change.
+func RenderSetUpdate(family, table string, s Set) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "flush set %s %s %s\n", family, table, s.Name)
+	if len(s.Elements) > 0 {
+		fmt.Fprintf(&b, "add element %s %s %s { %s }\n",
+			family, table, s.Name, renderElements(s))
+	}
+	return b.String()
+}
