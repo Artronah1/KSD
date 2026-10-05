@@ -40,16 +40,17 @@ type Config struct {
 	MangleTable string
 
 	// --- source of truth for VPN endpoints ---
-	SourceFamily string // inet
-	SourceTable  string // passwall2
-	SourceSet    string // psw2_vps
+	SourceFamily   string // inet
+	SourceTable    string // passwall2
+	SourceSet      string // psw2_vps
+	SourceDisabled bool   // source_set = "none": trust marks + static_vps only
 
 	// --- network ---
-	WANInterface string
-	WANDevice    string
-	AllowedIfaces []string
-	AllowedMarks  []string
-	StaticVPS     []string
+	WANInterface   string
+	WANDevice      string
+	AllowedIfaces  []string
+	AllowedMarks   []string
+	StaticVPS      []string
 	MergeStaticVPS bool
 
 	DOHServers []string
@@ -78,17 +79,17 @@ type Config struct {
 	ManglePriority        int
 
 	// --- behaviour ---
-	MaxVPSElements       int
-	EmptySourceGraceSec  int // replaces EMPTY_SOURCE_THRESHOLD (count-based)
-	PollIntervalSec      int // replaces the 5-minute cron
-	VerifyIntervalSec    int
-	FullFailMax          int // breaker: N consecutive full-mode failures
-	FlushOnNarrowOnly    bool
-	LogDrops             bool
-	LogSuspicious        bool
-	LogFile              string
-	LogMaxKB             int64
-	ForceStop            bool
+	MaxVPSElements      int
+	EmptySourceGraceSec int // replaces EMPTY_SOURCE_THRESHOLD (count-based)
+	PollIntervalSec     int // replaces the 5-minute cron
+	VerifyIntervalSec   int
+	FullFailMax         int // breaker: N consecutive full-mode failures
+	FlushOnNarrowOnly   bool
+	LogDrops            bool
+	LogSuspicious       bool
+	LogFile             string
+	LogMaxKB            int64
+	ForceStop           bool
 
 	// --- paths ---
 	StatePath string
@@ -169,13 +170,13 @@ func LoadConfig(path string) (*Config, error) {
 			return def
 		}
 		switch strings.ToLower(strings.TrimSpace(v)) {
-			case "1", "true", "yes", "on", "enabled":
-				return true
-			case "0", "false", "no", "off", "disabled":
-				return false
-			default:
-				Warnf("option %s=%q is not a boolean, using default (%v)", key, v, def)
-				return def
+		case "1", "true", "yes", "on", "enabled":
+			return true
+		case "0", "false", "no", "off", "disabled":
+			return false
+		default:
+			Warnf("option %s=%q is not a boolean, using default (%v)", key, v, def)
+			return def
 		}
 	}
 	getInt := func(key string, def int) int {
@@ -252,11 +253,17 @@ func LoadConfig(path string) (*Config, error) {
 	c.NTPServers = getList("ntp_servers", nil)
 
 	if v, ok := main.Options["source_set"]; ok && v != "" {
-		parts := strings.Fields(v)
-		if len(parts) == 3 {
-			c.SourceFamily, c.SourceTable, c.SourceSet = parts[0], parts[1], parts[2]
-		} else {
-			Warnf("source_set=%q invalid, expected '<family> <table> <set>'", v)
+		switch {
+		case v == "none":
+			c.SourceDisabled = true
+			c.SourceFamily, c.SourceTable, c.SourceSet = "", "", ""
+		default:
+			parts := strings.Fields(v)
+			if len(parts) == 3 {
+				c.SourceFamily, c.SourceTable, c.SourceSet = parts[0], parts[1], parts[2]
+			} else {
+				Warnf("source_set=%q invalid, expected '<family> <table> <set>' or 'none'", v)
+			}
 		}
 	}
 
@@ -320,10 +327,12 @@ func (c *Config) Validate() error {
 	if !reIface.MatchString(c.WANInterface) {
 		return fmt.Errorf("invalid wan_interface %q", c.WANInterface)
 	}
-	if !reName.MatchString(c.SourceFamily) || !reName.MatchString(c.SourceTable) ||
-		!reName.MatchString(c.SourceSet) {
-		return fmt.Errorf("invalid source_set %q %q %q",
-			c.SourceFamily, c.SourceTable, c.SourceSet)
+	if !c.SourceDisabled {
+		if !reName.MatchString(c.SourceFamily) || !reName.MatchString(c.SourceTable) ||
+			!reName.MatchString(c.SourceSet) {
+			return fmt.Errorf("invalid source_set %q %q %q",
+				c.SourceFamily, c.SourceTable, c.SourceSet)
+		}
 	}
 
 	if len(c.AllowedMarks) == 0 {
@@ -369,10 +378,12 @@ func (c *Config) Validate() error {
 	if c.LogMaxKB < 16 {
 		return fmt.Errorf("log_max_kb must be >= 16")
 	}
-	switch c.SourceFamily {
+	if !c.SourceDisabled {
+		switch c.SourceFamily {
 		case "inet", "ip", "ip6", "arp", "bridge", "netdev":
 		default:
 			return fmt.Errorf("invalid source_set family %q", c.SourceFamily)
+		}
 	}
 	if c.PollIntervalSec <= 0 {
 		return fmt.Errorf("poll_interval_sec must be > 0")
@@ -419,7 +430,7 @@ func (c *Config) EmptyGrace() time.Duration {
 	return time.Duration(c.EmptySourceGraceSec) * time.Second
 }
 
-/// validVPSElem accepts a bare IPv4 address, a CIDR prefix, or a range "A-B".
+// / validVPSElem accepts a bare IPv4 address, a CIDR prefix, or a range "A-B".
 func validVPSElem(s string) bool {
 	if strings.Contains(s, "/") {
 		_, _, err := net.ParseCIDR(s)

@@ -10,7 +10,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/Go-1.27.1-00ADD8?logo=go&logoColor=white" alt="Go">
   <img src="https://img.shields.io/badge/Platform-OpenWrt-orange" alt="OpenWrt">
-  <img src="https://img.shields.io/badge/Status-v4.0--dev-yellow" alt="Status">
+  <img src="https://img.shields.io/badge/Status-v1.3.x-blue" alt="Status">
 </p>
 Демон на Go, реализующий fail-close killswitch для OpenWrt поверх nftables.
 Предназначен для использования с Passwall2: весь немаркированный трафик
@@ -53,9 +53,10 @@ https://github.com/Artronah1/KSD/releases/latest
 
     GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -o ksd-arm64 ./...
 
+
 ## Установка
 
-> ⚠️ **Держи UART или вторую SSH-сессию открытой.** Если ksd заблокирует доступ — восстановишь оттуда.
+> ⚠ **Держи UART или вторую SSH-сессию открытой.** Если ksd заблокирует доступ — восстановишь оттуда.
 
 1. Скачать бинарник под архитектуру роутера (`uname -m`):
 
@@ -68,15 +69,18 @@ https://github.com/Artronah1/KSD/releases/latest
 
        scp ksd-arm64 root@192.168.1.1:/tmp/ksd
        scp openwrt/killswitch.config root@192.168.1.1:/etc/config/killswitch
+       scp openwrt/ksd root@192.168.1.1:/etc/init.d/ksd
        scp openwrt/ksd-boot root@192.168.1.1:/etc/init.d/ksd-boot
+       scp openwrt/emergency.nft root@192.168.1.1:/etc/ksd/emergency.nft
 
 3. Установить на роутере:
 
        ssh root@192.168.1.1
 
        cp /tmp/ksd /usr/sbin/ksd
-       chmod +x /usr/sbin/ksd /etc/init.d/ksd-boot
+       chmod +x /usr/sbin/ksd /etc/init.d/ksd /etc/init.d/ksd-boot
        /etc/init.d/ksd-boot enable
+       /etc/init.d/ksd enable
 
 4. Проверить конфиг `/etc/config/killswitch`:
 
@@ -89,18 +93,15 @@ https://github.com/Artronah1/KSD/releases/latest
 
        /usr/sbin/ksd install -config /etc/config/killswitch
 
-6. Автозапуск и старт:
+6. Запустить сервис:
 
-       /etc/init.d/ksd enable
        /etc/init.d/ksd start
 
 7. Проверка:
 
        /usr/sbin/ksd status -config /etc/config/killswitch
        /usr/sbin/ksd self-test -config /etc/config/killswitch
-
-   Оба должны показать `[OK]` и `Result: PASS`.
-
+       
 ## Автоматическая установка
 
 Универсальный installer: сам определяет архитектуру, WAN, LAN-бриджи,
@@ -143,4 +144,4 @@ https://github.com/Artronah1/KSD/releases/latest
 ## Статус
 
 - v3.5 (shell) — reference implementation, frozen 2026-08-30
-- v4.0 (Go) — active development
+- v1.3.x (Go) — current stable release

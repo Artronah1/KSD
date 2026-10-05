@@ -175,6 +175,27 @@ func (d *Daemon) tickFull(wan WANStatus) {
 			st.SourceDown = false
 			Infof("passwall2 table %s is back", c.SourceTable)
 		}
+
+		if c.SourceDisabled {
+			// source_set = "none": trust marks + static_vps only.
+			// Never touch the VPS set, never flush conntrack.
+			var elems []string
+			if len(c.StaticVPS) > 0 {
+				var err error
+				if elems, err = NormalizeVPS(c.StaticVPS, c.MaxVPSElements); err != nil {
+					Errorf("static_vps invalid: %v", err)
+					return
+				}
+			}
+			if len(elems) > 0 {
+				if _, err := UpdateVPSSet(c, st, elems); err != nil {
+					Errorf("VPS set update failed: %v", err)
+				}
+				_ = st.Save()
+			}
+			return
+		}
+
 		elems, err := NormalizeVPS(src.Elements, c.MaxVPSElements)
 		if err != nil {
 			Errorf("VPS update rejected: %v", err)

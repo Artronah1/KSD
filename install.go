@@ -149,7 +149,7 @@ func InstallFull(c *Config, st *State, wan, gw string, vps []string) error {
 		st.FullFail++
 		_ = st.Save()
 		Errorf("post-apply verification failed (%d/%d): %v",
-		       st.FullFail, c.FullFailMax, err)
+			st.FullFail, c.FullFailMax, err)
 		if berr := InstallBaseline(c, st, wan); berr != nil {
 			Errorf("rollback to baseline ALSO failed: %v", berr)
 		}
@@ -255,7 +255,7 @@ func UpdateVPSSet(c *Config, st *State, vps []string) (bool, error) {
 			return narrowing, err
 		}
 		Infof("VPS set narrowed (%d -> %d elements), conntrack flushed",
-		      prevLen, len(vps))
+			prevLen, len(vps))
 	} else {
 		Infof("VPS set widened (%d elements), conntrack preserved", len(vps))
 	}
@@ -273,6 +273,11 @@ type VPSSourceResult struct {
 // ReadVPSSource reads the upstream VPN endpoint set.
 func ReadVPSSource(c *Config) VPSSourceResult {
 	var res VPSSourceResult
+
+	if c.SourceDisabled {
+		res.OK = true
+		return res
+	}
 
 	if !nftTableExists(c.SourceFamily, c.SourceTable) {
 		res.Missing = true
@@ -301,7 +306,7 @@ func ReadVPSSource(c *Config) VPSSourceResult {
 			res.Type = t
 			if t != "ipv4_addr" {
 				Errorf("source set %s has type %q, expected ipv4_addr; refusing to use it",
-				       c.SourceSet, t)
+					c.SourceSet, t)
 				return res
 			}
 		}

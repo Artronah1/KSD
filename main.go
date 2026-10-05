@@ -324,15 +324,19 @@ func cmdStatus(args []string) {
 	fmt.Printf("  VPS set elements : %d\n", len(vps))
 	fmt.Printf("  Poll / verify    : %ds / %ds\n", cfg.PollIntervalSec, cfg.VerifyIntervalSec)
 
-	src := ReadVPSSource(cfg)
-	switch {
-	case src.Missing:
-		fmt.Printf("  Source (%s %s) : DOWN\n", cfg.SourceTable, cfg.SourceSet)
-	case src.OK:
-		fmt.Printf("  Source (%s %s) : ok (%d elements)\n",
-			cfg.SourceTable, cfg.SourceSet, len(src.Elements))
-	default:
-		fmt.Printf("  Source (%s %s) : UNUSABLE\n", cfg.SourceTable, cfg.SourceSet)
+	if cfg.SourceDisabled {
+		fmt.Printf("  Source           : none (marks only)\n")
+	} else {
+		src := ReadVPSSource(cfg)
+		switch {
+		case src.Missing:
+			fmt.Printf("  Source (%s %s) : DOWN\n", cfg.SourceTable, cfg.SourceSet)
+		case src.OK:
+			fmt.Printf("  Source (%s %s) : ok (%d elements)\n",
+				cfg.SourceTable, cfg.SourceSet, len(src.Elements))
+		default:
+			fmt.Printf("  Source (%s %s) : UNUSABLE\n", cfg.SourceTable, cfg.SourceSet)
+		}
 	}
 	if !st.EmptySince.IsZero() {
 		fmt.Printf("  Source unhealthy : %.0fs\n", time.Since(st.EmptySince).Seconds())
