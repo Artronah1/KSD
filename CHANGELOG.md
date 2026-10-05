@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.4.0] — 2026-10-05
+
+### Added
+
+- **`source_set none` mode.** With `option source_set 'none'`, ksd
+  does not read any upstream nft set. The VPS set is populated only
+  from `static_vps` (or left empty). Traffic is trusted by `allowed_mark`
+  and `static_vps` only — no `SourceDown` handling, no conntrack flush,
+  no set clearing on grace. Intended for clients (Mihomo, OpenClash,
+  Nikki) that route traffic by mark but do not expose an nft set of
+  endpoint addresses.
+
+  **Advanced mode.** Without a VPS set, the killswitch trusts the mark
+  alone. Documented as such in README.
+
+### Fixed
+
+- **README** install steps: previously only copied `openwrt/ksd-boot`
+  (Layer 0), but step 6 tried to enable `/etc/init.d/ksd` (Layer 1)
+  which the installer never placed. Now copies both `openwrt/ksd` and
+  `openwrt/emergency.nft` explicitly.
+- **README** badge and status: were still `v4.0-dev`, now `v1.4.x`.
+
 ## [1.3.3] — 2026-10-03
 
 ### Fixed
